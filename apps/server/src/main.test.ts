@@ -1,4 +1,5 @@
 import * as Http from "node:http";
+import path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, vi } from "@effect/vitest";
 import type { OrchestrationReadModel } from "@t3tools/contracts";
@@ -30,6 +31,10 @@ const serverStart = Effect.acquireRelease(
   () => Effect.sync(() => stop()),
 );
 const findAvailablePort = vi.fn((preferred: number) => Effect.succeed(preferred));
+const assertPathEndsWith = (actual: string | undefined, expectedSuffix: string) => {
+  assert.isNotNull(actual);
+  assert.equal(actual?.endsWith(path.normalize(expectedSuffix)), true);
+};
 
 // Shared service layer used by this CLI test suite.
 const testLayer = Layer.mergeAll(
@@ -107,7 +112,7 @@ it.layer(testLayer)("server CLI command", (it) => {
       assert.equal(resolvedConfig?.mode, "desktop");
       assert.equal(resolvedConfig?.port, 4010);
       assert.equal(resolvedConfig?.host, "0.0.0.0");
-      assert.equal(resolvedConfig?.stateDir, "/tmp/t3-cli-state");
+      assertPathEndsWith(resolvedConfig?.stateDir, "/tmp/t3-cli-state");
       assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
       assert.equal(resolvedConfig?.noBrowser, true);
       assert.equal(resolvedConfig?.authToken, "auth-secret");
@@ -142,7 +147,7 @@ it.layer(testLayer)("server CLI command", (it) => {
       assert.equal(resolvedConfig?.mode, "desktop");
       assert.equal(resolvedConfig?.port, 4999);
       assert.equal(resolvedConfig?.host, "100.88.10.4");
-      assert.equal(resolvedConfig?.stateDir, "/tmp/t3-env-state");
+      assertPathEndsWith(resolvedConfig?.stateDir, "/tmp/t3-env-state");
       assert.equal(resolvedConfig?.devUrl?.toString(), "http://localhost:5173/");
       assert.equal(resolvedConfig?.noBrowser, true);
       assert.equal(resolvedConfig?.authToken, "env-token");

@@ -137,6 +137,7 @@ const readPersistedDeviceIdentity = (deviceJsonPath: string) =>
     try: () => import("node:fs/promises").then((fs) => fs.readFile(deviceJsonPath, "utf-8")),
     catch: () => null,
   }).pipe(
+    Effect.catch(() => Effect.succeed(null)),
     Effect.flatMap((deviceJsonRaw) =>
       deviceJsonRaw
         ? Effect.try({
