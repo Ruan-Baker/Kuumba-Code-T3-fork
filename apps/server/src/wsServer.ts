@@ -434,9 +434,17 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
         // Device info endpoint for remote session discovery
         if (url.pathname === "/api/device-info") {
-          const snapshot = yield* projectionSnapshotQuery.getSnapshot().pipe(
-            Effect.catch(() => Effect.succeed({ projects: [] as any[], threads: [] as any[], snapshotSequence: 0 })),
-          );
+          const snapshot = yield* projectionSnapshotQuery
+            .getSnapshot()
+            .pipe(
+              Effect.catch(() =>
+                Effect.succeed({
+                  projects: [] as any[],
+                  threads: [] as any[],
+                  snapshotSequence: 0,
+                }),
+              ),
+            );
           const sessions = (snapshot.threads as any[])
             .filter((t) => t.session && t.session.status !== "stopped" && sharedThreadIds.has(t.id))
             .map((t) => {
@@ -456,10 +464,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
             port,
             sessions,
           };
-          respond(200, {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }, JSON.stringify(deviceInfo));
+          respond(
+            200,
+            {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+            JSON.stringify(deviceInfo),
+          );
           return;
         }
 

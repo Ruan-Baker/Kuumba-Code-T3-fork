@@ -13,8 +13,17 @@ interface ProjectNotesPopoverProps {
 
 export function ProjectNotesPopover({ projectCwd, projectName }: ProjectNotesPopoverProps) {
   const [open, setOpen] = useState(false);
-  const { notesByCwd, loadingCwds, loadNotes, setText, addTodo, toggleTodo, removeTodo, updateTodoLabel, reorderTodos } =
-    useProjectNotesStore();
+  const {
+    notesByCwd,
+    loadingCwds,
+    loadNotes,
+    setText,
+    addTodo,
+    toggleTodo,
+    removeTodo,
+    updateTodoLabel,
+    reorderTodos,
+  } = useProjectNotesStore();
   const [newTodoText, setNewTodoText] = useState("");
   const newTodoInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,12 +88,7 @@ export function ProjectNotesPopover({ projectCwd, projectName }: ProjectNotesPop
         />
         <TooltipPopup side="top">Project notes</TooltipPopup>
       </Tooltip>
-      <PopoverPopup
-        side="right"
-        align="start"
-        sideOffset={8}
-        className="w-80 max-h-[480px]"
-      >
+      <PopoverPopup side="right" align="start" sideOffset={8} className="w-80 max-h-[480px]">
         <div className="flex flex-col gap-3">
           <PopoverTitle className="text-sm font-semibold truncate">
             Notes: {projectName}
@@ -165,14 +169,18 @@ interface TodoRowProps {
   onMove: (direction: "up" | "down") => void;
 }
 
-function TodoRow({ todo, isFirst, isLast, onToggle, onRemove, onLabelChange, onMove }: TodoRowProps) {
+function TodoRow({
+  todo,
+  isFirst,
+  isLast,
+  onToggle,
+  onRemove,
+  onLabelChange,
+  onMove,
+}: TodoRowProps) {
   return (
     <div className="group/todo flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-secondary/50">
-      <Checkbox
-        checked={todo.done}
-        onCheckedChange={onToggle}
-        className="shrink-0"
-      />
+      <Checkbox checked={todo.done} onCheckedChange={onToggle} className="shrink-0" />
       <input
         className={`flex-1 min-w-0 bg-transparent text-xs text-foreground focus:outline-none ${
           todo.done ? "line-through text-muted-foreground" : ""

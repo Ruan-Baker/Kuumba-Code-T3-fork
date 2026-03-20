@@ -1,8 +1,19 @@
-import { ChevronRightIcon, MonitorIcon, RadioIcon, SettingsIcon, WifiIcon, WifiOffIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  MonitorIcon,
+  RadioIcon,
+  SettingsIcon,
+  WifiIcon,
+  WifiOffIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppSettings, type RemoteDeviceConfig } from "../appSettings";
-import { useRemoteDevices, type RemoteDeviceStatus, type RemoteSessionInfo } from "../remoteDevices";
+import {
+  useRemoteDevices,
+  type RemoteDeviceStatus,
+  type RemoteSessionInfo,
+} from "../remoteDevices";
 import { useRemoteConnectionStore, buildRemoteWsUrl } from "../remoteConnection";
 import { createRemoteNativeApi } from "../wsNativeApi";
 import { setActiveApi } from "../nativeApi";
@@ -55,7 +66,10 @@ function statusLabel(status: string): string {
 
 /** Group sessions by projectId so we can show notes per project */
 function groupSessionsByProject(sessions: RemoteSessionInfo[]) {
-  const groups = new Map<string, { projectName: string; projectCwd: string; sessions: RemoteSessionInfo[] }>();
+  const groups = new Map<
+    string,
+    { projectName: string; projectCwd: string; sessions: RemoteSessionInfo[] }
+  >();
   for (const session of sessions) {
     const key = session.projectId;
     const existing = groups.get(key);
@@ -121,10 +135,7 @@ function RemoteDeviceGroup({ deviceStatus }: { deviceStatus: RemoteDeviceStatus 
   return (
     <SidebarMenuItem>
       <Collapsible open={expanded} onOpenChange={setExpanded}>
-        <SidebarMenuButton
-          onClick={() => setExpanded(!expanded)}
-          className="gap-1.5 py-1"
-        >
+        <SidebarMenuButton onClick={() => setExpanded(!expanded)} className="gap-1.5 py-1">
           <ChevronRightIcon
             className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
               expanded ? "rotate-90" : ""
@@ -180,10 +191,7 @@ function RemoteDeviceGroup({ deviceStatus }: { deviceStatus: RemoteDeviceStatus 
                         <span className="flex-1 truncate text-xs">
                           {session.title || session.projectName}
                         </span>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-1 py-0 h-4 leading-none"
-                        >
+                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none">
                           {statusLabel(session.status)}
                         </Badge>
                       </SidebarMenuSubButton>
@@ -214,9 +222,7 @@ export function RemoteSessionsContent() {
               <MonitorIcon className="size-6 text-muted-foreground/40" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground/70">
-                No remote devices yet
-              </p>
+              <p className="text-xs font-medium text-muted-foreground/70">No remote devices yet</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground/50">
                 Add your other machines in Settings to view their shared sessions here.
               </p>
@@ -235,7 +241,9 @@ export function RemoteSessionsContent() {
   }
 
   // All devices online but none have shared sessions
-  const allOnlineNoSessions = statuses.every((s) => s.online && (s.info?.sessions ?? []).length === 0);
+  const allOnlineNoSessions = statuses.every(
+    (s) => s.online && (s.info?.sessions ?? []).length === 0,
+  );
   if (allOnlineNoSessions && statuses.length > 0) {
     return (
       <SidebarContent>
@@ -245,13 +253,11 @@ export function RemoteSessionsContent() {
               <RadioIcon className="size-6 text-muted-foreground/40" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground/70">
-                No shared sessions
-              </p>
+              <p className="text-xs font-medium text-muted-foreground/70">No shared sessions</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground/50">
                 Sessions are private by default. Use the{" "}
-                <RadioIcon className="inline size-3 text-muted-foreground/60" />{" "}
-                broadcast button in a session header to share it with your remote devices.
+                <RadioIcon className="inline size-3 text-muted-foreground/60" /> broadcast button in
+                a session header to share it with your remote devices.
               </p>
             </div>
           </div>

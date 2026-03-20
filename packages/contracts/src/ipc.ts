@@ -169,7 +169,10 @@ export interface NativeApi {
     ) => Promise<T | null>;
   };
   sessions: {
-    setRemoteSharing: (input: { threadId: string; shared: boolean }) => Promise<{ shared: boolean }>;
+    setRemoteSharing: (input: {
+      threadId: string;
+      shared: boolean;
+    }) => Promise<{ shared: boolean }>;
     getRemoteSharing: (input: { threadId: string }) => Promise<{ shared: boolean }>;
   };
   server: {

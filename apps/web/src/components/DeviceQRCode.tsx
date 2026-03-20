@@ -74,12 +74,7 @@ export function DeviceQRCode() {
         <code className="flex-1 rounded-md bg-muted px-2 py-1.5 text-xs font-mono text-foreground/80 truncate">
           {wsUrl}
         </code>
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={() => void handleCopy()}
-          className="shrink-0"
-        >
+        <Button size="xs" variant="outline" onClick={() => void handleCopy()} className="shrink-0">
           {copied ? (
             <CheckIcon className="size-3.5 text-green-500" />
           ) : (

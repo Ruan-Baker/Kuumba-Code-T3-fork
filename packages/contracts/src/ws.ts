@@ -143,13 +143,19 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.terminalClose, TerminalCloseInput),
 
   // Session sharing
-  tagRequestBody(WS_METHODS.sessionsSetRemoteSharing, Schema.Struct({
-    threadId: TrimmedNonEmptyString,
-    shared: Schema.Boolean,
-  })),
-  tagRequestBody(WS_METHODS.sessionsGetRemoteSharing, Schema.Struct({
-    threadId: TrimmedNonEmptyString,
-  })),
+  tagRequestBody(
+    WS_METHODS.sessionsSetRemoteSharing,
+    Schema.Struct({
+      threadId: TrimmedNonEmptyString,
+      shared: Schema.Boolean,
+    }),
+  ),
+  tagRequestBody(
+    WS_METHODS.sessionsGetRemoteSharing,
+    Schema.Struct({
+      threadId: TrimmedNonEmptyString,
+    }),
+  ),
 
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),

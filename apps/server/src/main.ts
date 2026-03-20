@@ -187,8 +187,7 @@ const ServerConfigLive = (input: CliInput) =>
       let resolvedDeviceName: string | undefined;
       try {
         const deviceJsonRaw = yield* Effect.tryPromise({
-          try: () =>
-            import("node:fs/promises").then((fs) => fs.readFile(deviceJsonPath, "utf-8")),
+          try: () => import("node:fs/promises").then((fs) => fs.readFile(deviceJsonPath, "utf-8")),
           catch: () => null,
         }).pipe(Effect.catch(() => Effect.succeed(null)));
         if (deviceJsonRaw) {
@@ -377,7 +376,9 @@ const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.optional,
 );
 const deviceNameFlag = Flag.string("device-name").pipe(
-  Flag.withDescription("Human-readable device name for remote session discovery (equivalent to T3CODE_DEVICE_NAME)."),
+  Flag.withDescription(
+    "Human-readable device name for remote session discovery (equivalent to T3CODE_DEVICE_NAME).",
+  ),
   Flag.optional,
 );
 

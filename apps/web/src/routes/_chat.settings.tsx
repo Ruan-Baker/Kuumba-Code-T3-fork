@@ -81,7 +81,8 @@ function RemoteDevicesSettings({
     onUpdate(devices.filter((_, i) => i !== index));
   };
 
-  const isFormValid = draft.name.trim() !== "" && draft.tailscaleHost.trim() !== "" && draft.port > 0;
+  const isFormValid =
+    draft.name.trim() !== "" && draft.tailscaleHost.trim() !== "" && draft.port > 0;
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5">

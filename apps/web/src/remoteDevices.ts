@@ -38,9 +38,7 @@ export interface RemoteDeviceStatus {
 const POLL_INTERVAL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 5_000;
 
-async function fetchDeviceInfo(
-  device: RemoteDeviceConfig,
-): Promise<RemoteDeviceInfo> {
+async function fetchDeviceInfo(device: RemoteDeviceConfig): Promise<RemoteDeviceInfo> {
   const url = `http://${device.tailscaleHost}:${device.port}/api/device-info`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -48,9 +46,7 @@ async function fetchDeviceInfo(
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: device.authToken
-        ? { Authorization: `Bearer ${device.authToken}` }
-        : undefined,
+      headers: device.authToken ? { Authorization: `Bearer ${device.authToken}` } : undefined,
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);

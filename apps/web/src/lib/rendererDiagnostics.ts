@@ -28,7 +28,8 @@ export function logRendererDiagnostic(entry: DesktopRendererLogEntry): void {
     console.info(`[${entry.scope}] ${entry.message}`, entry.details ?? "");
   }
 
-  const pendingLog = typeof window === "undefined" ? undefined : window.desktopBridge?.logRenderer(entry);
+  const pendingLog =
+    typeof window === "undefined" ? undefined : window.desktopBridge?.logRenderer(entry);
   if (!pendingLog) {
     return;
   }
@@ -49,7 +50,8 @@ export function installGlobalRendererDiagnostics(): void {
       level: "error",
       scope: "window.error",
       message: event.message || "Unhandled window error",
-      details: normalizeErrorDetails(event.error) ?? `${event.filename}:${event.lineno}:${event.colno}`,
+      details:
+        normalizeErrorDetails(event.error) ?? `${event.filename}:${event.lineno}:${event.colno}`,
     });
   });
 
