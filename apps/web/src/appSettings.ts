@@ -39,6 +39,14 @@ export const RemoteDeviceConfigSchema = Schema.Struct({
 });
 export type RemoteDeviceConfig = typeof RemoteDeviceConfigSchema.Type;
 
+export const PairedDeviceSchema = Schema.Struct({
+  deviceId: Schema.String,
+  deviceName: Schema.String,
+  publicKey: Schema.String,
+  pairedAt: Schema.Number,
+});
+export type PairedDevice = typeof PairedDeviceSchema.Type;
+
 export const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -49,7 +57,13 @@ export const AppSettingsSchema = Schema.Struct({
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
+  tailscaleHostname: Schema.String.check(Schema.isMaxLength(512)).pipe(withDefaults(() => "")),
   remoteDevices: Schema.Array(RemoteDeviceConfigSchema).pipe(withDefaults(() => [])),
+  relayUrl: Schema.String.pipe(withDefaults(() => "")),
+  devicePairingToken: Schema.String.pipe(withDefaults(() => "")),
+  e2ePrivateKey: Schema.String.pipe(withDefaults(() => "")),
+  e2ePublicKey: Schema.String.pipe(withDefaults(() => "")),
+  pairedDevices: Schema.Array(PairedDeviceSchema).pipe(withDefaults(() => [])),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {
