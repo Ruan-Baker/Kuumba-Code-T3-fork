@@ -135,9 +135,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             </MenuItem>
             <MenuItem onClick={() => void toggleTTS(planMarkdown)}>
               {isSpeaking ? (
-                <><VolumeXIcon className="size-4" /> Stop reading</>
+                <>
+                  <VolumeXIcon className="size-4" /> Stop reading
+                </>
               ) : (
-                <><Volume2Icon className="size-4" /> Read plan aloud</>
+                <>
+                  <Volume2Icon className="size-4" /> Read plan aloud
+                </>
               )}
             </MenuItem>
           </MenuPopup>

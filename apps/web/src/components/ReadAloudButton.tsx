@@ -7,11 +7,8 @@ interface ReadAloudButtonProps {
   content: string;
 }
 
-export const ReadAloudButton = memo(function ReadAloudButton({
-  content,
-}: ReadAloudButtonProps) {
-  const { status, speed, isSpeaking, isLoading, toggle, cycleSpeed } =
-    useTTS();
+export const ReadAloudButton = memo(function ReadAloudButton({ content }: ReadAloudButtonProps) {
+  const { status, speed, isSpeaking, isLoading, toggle, cycleSpeed } = useTTS();
 
   const hasError = status.state === "error";
   const isActive = isSpeaking || isLoading;
@@ -25,7 +22,7 @@ export const ReadAloudButton = memo(function ReadAloudButton({
         disabled={isLoading}
         title={
           hasError
-            ? status.error ?? "TTS error"
+            ? (status.error ?? "TTS error")
             : isLoading
               ? "Loading voice..."
               : isSpeaking

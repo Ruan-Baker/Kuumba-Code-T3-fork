@@ -117,8 +117,7 @@ export async function speak(
     cleanup();
     onStatus?.({
       state: "error",
-      error:
-        "Piper TTS failed to load. Please check your connection and try again.",
+      error: "Piper TTS failed to load. Please check your connection and try again.",
     });
   }
 }

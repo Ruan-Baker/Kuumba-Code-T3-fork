@@ -92,7 +92,7 @@
 
   @variant dark {
     color-scheme: dark;
-    --background: oklch(0.210 0.007 285);
+    --background: oklch(0.21 0.007 285);
     --foreground: oklch(0.93 0.005 60);
     --card: color-mix(in srgb, var(--background) 94%, oklch(0.3 0.01 60));
     --card-foreground: oklch(0.93 0.005 60);

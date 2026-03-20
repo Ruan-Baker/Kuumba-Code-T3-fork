@@ -69,8 +69,7 @@ export function useTTS() {
     status,
     speed,
     isSpeaking: status.state === "speaking",
-    isLoading:
-      status.state === "downloading" || status.state === "synthesizing",
+    isLoading: status.state === "downloading" || status.state === "synthesizing",
     speak: speakText,
     stop: stopSpeaking,
     toggle,
