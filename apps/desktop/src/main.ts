@@ -1266,12 +1266,15 @@ function registerIpcHandlers(): void {
       return;
     }
 
-    writeRendererLog({
+    const logEntry: DesktopRendererLogEntry = {
       level: entry.level,
       scope: entry.scope,
       message: entry.message,
-      details: typeof entry.details === "string" ? entry.details : undefined,
-    });
+    };
+    if (typeof entry.details === "string") {
+      logEntry.details = entry.details;
+    }
+    writeRendererLog(logEntry);
   });
 }
 
