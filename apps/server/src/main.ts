@@ -158,7 +158,10 @@ const writePersistedDeviceIdentity = (
         fs.writeFile(deviceJsonPath, JSON.stringify({ deviceId, deviceName }, null, 2)),
       ),
     catch: () => null,
-  }).pipe(Effect.asVoid, Effect.catch(() => Effect.void));
+  }).pipe(
+    Effect.asVoid,
+    Effect.catch(() => Effect.void),
+  );
 
 const ServerConfigLive = (input: CliInput) =>
   Layer.effect(
