@@ -57,13 +57,13 @@ const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const STATE_DIR =
-  process.env.T3CODE_STATE_DIR?.trim() || Path.join(OS.homedir(), ".t3", "userdata");
-const DESKTOP_SCHEME = "t3";
+  process.env.KUUMBA_STATE_DIR?.trim() || Path.join(OS.homedir(), ".kuumba", "userdata");
+const DESKTOP_SCHEME = "kuumba";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
-const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
-const APP_USER_MODEL_ID = "com.t3tools.t3code";
-const USER_DATA_DIR_NAME = isDevelopment ? "t3code-dev" : "t3code";
+const APP_DISPLAY_NAME = isDevelopment ? "Kuumba Code (Dev)" : "Kuumba Code (Alpha)";
+const APP_USER_MODEL_ID = "com.digital13.kuumbacode";
+const USER_DATA_DIR_NAME = isDevelopment ? "kuumbacode-dev" : "kuumbacode";
 const LEGACY_USER_DATA_DIR_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
