@@ -4,6 +4,8 @@ import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/con
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
+  getDesktopUpdatePrimaryButtonLabel,
+  getDesktopUpdateStatusMessage,
   getDesktopUpdateButtonTooltip,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
@@ -91,6 +93,27 @@ describe("desktop update button state", () => {
     expect(shouldShowDesktopUpdateButton(state)).toBe(true);
     expect(isDesktopUpdateButtonDisabled(state)).toBe(true);
     expect(getDesktopUpdateButtonTooltip(state)).toContain("42%");
+  });
+
+  it("shows a checking label while polling GitHub Releases", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "checking",
+    };
+
+    expect(getDesktopUpdatePrimaryButtonLabel(state)).toBe("Checking...");
+    expect(getDesktopUpdateStatusMessage(state)).toContain("Checking GitHub Releases");
+  });
+
+  it("shows a latest-version message after a successful check", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "up-to-date",
+      checkedAt: "2026-03-20T12:00:00.000Z",
+    };
+
+    expect(getDesktopUpdatePrimaryButtonLabel(state)).toBe("Check for updates");
+    expect(getDesktopUpdateStatusMessage(state)).toBe("You're on the latest version.");
   });
 });
 

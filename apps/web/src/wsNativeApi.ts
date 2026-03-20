@@ -114,6 +114,7 @@ export function createWsNativeApi(): NativeApi {
     projects: {
       searchEntries: (input) => transport.request(WS_METHODS.projectsSearchEntries, input),
       writeFile: (input) => transport.request(WS_METHODS.projectsWriteFile, input),
+      readFile: (input) => transport.request(WS_METHODS.projectsReadFile, input),
     },
     shell: {
       openInEditor: (cwd, editor) =>
@@ -157,6 +158,10 @@ export function createWsNativeApi(): NativeApi {
         return showContextMenuFallback(items, position);
       },
     },
+    sessions: {
+      setRemoteSharing: (input) => transport.request(WS_METHODS.sessionsSetRemoteSharing, input),
+      getRemoteSharing: (input) => transport.request(WS_METHODS.sessionsGetRemoteSharing, input),
+    },
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
@@ -178,5 +183,90 @@ export function createWsNativeApi(): NativeApi {
   };
 
   instance = { api, transport };
+  return api;
+}
+
+/**
+ * Create a NativeApi backed by a remote WebSocket connection.
+ * Used for viewing sessions on other devices over Tailscale.
+ */
+export function createRemoteNativeApi(wsUrl: string): NativeApi {
+  const transport = new WsTransport(wsUrl);
+
+  const api: NativeApi = {
+    dialogs: {
+      pickFolder: async () => null, // Not supported for remote
+      confirm: async (message) => window.confirm(message),
+    },
+    terminal: {
+      open: (input) => transport.request(WS_METHODS.terminalOpen, input),
+      write: (input) => transport.request(WS_METHODS.terminalWrite, input),
+      resize: (input) => transport.request(WS_METHODS.terminalResize, input),
+      clear: (input) => transport.request(WS_METHODS.terminalClear, input),
+      restart: (input) => transport.request(WS_METHODS.terminalRestart, input),
+      close: (input) => transport.request(WS_METHODS.terminalClose, input),
+      onEvent: (callback) =>
+        transport.subscribe(WS_CHANNELS.terminalEvent, (message) => callback(message.data)),
+    },
+    projects: {
+      searchEntries: (input) => transport.request(WS_METHODS.projectsSearchEntries, input),
+      writeFile: (input) => transport.request(WS_METHODS.projectsWriteFile, input),
+      readFile: (input) => transport.request(WS_METHODS.projectsReadFile, input),
+    },
+    shell: {
+      openInEditor: () => Promise.resolve(), // Not supported for remote
+      openExternal: async (url) => {
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
+    },
+    git: {
+      pull: (input) => transport.request(WS_METHODS.gitPull, input),
+      status: (input) => transport.request(WS_METHODS.gitStatus, input),
+      runStackedAction: (input) => transport.request(WS_METHODS.gitRunStackedAction, input),
+      listBranches: (input) => transport.request(WS_METHODS.gitListBranches, input),
+      createWorktree: (input) => transport.request(WS_METHODS.gitCreateWorktree, input),
+      removeWorktree: (input) => transport.request(WS_METHODS.gitRemoveWorktree, input),
+      createBranch: (input) => transport.request(WS_METHODS.gitCreateBranch, input),
+      checkout: (input) => transport.request(WS_METHODS.gitCheckout, input),
+      init: (input) => transport.request(WS_METHODS.gitInit, input),
+      resolvePullRequest: (input) => transport.request(WS_METHODS.gitResolvePullRequest, input),
+      preparePullRequestThread: (input) =>
+        transport.request(WS_METHODS.gitPreparePullRequestThread, input),
+    },
+    contextMenu: {
+      show: async <T extends string>(
+        items: readonly ContextMenuItem<T>[],
+        position?: { x: number; y: number },
+      ): Promise<T | null> => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.showContextMenu(items, position) as Promise<T | null>;
+        }
+        return showContextMenuFallback(items, position);
+      },
+    },
+    sessions: {
+      setRemoteSharing: (input) => transport.request(WS_METHODS.sessionsSetRemoteSharing, input),
+      getRemoteSharing: (input) => transport.request(WS_METHODS.sessionsGetRemoteSharing, input),
+    },
+    server: {
+      getConfig: () => transport.request(WS_METHODS.serverGetConfig),
+      upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
+    },
+    orchestration: {
+      getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),
+      dispatchCommand: (command) =>
+        transport.request(ORCHESTRATION_WS_METHODS.dispatchCommand, { command }),
+      getTurnDiff: (input) => transport.request(ORCHESTRATION_WS_METHODS.getTurnDiff, input),
+      getFullThreadDiff: (input) =>
+        transport.request(ORCHESTRATION_WS_METHODS.getFullThreadDiff, input),
+      replayEvents: (fromSequenceExclusive) =>
+        transport.request(ORCHESTRATION_WS_METHODS.replayEvents, { fromSequenceExclusive }),
+      onDomainEvent: (callback) =>
+        transport.subscribe(ORCHESTRATION_WS_CHANNELS.domainEvent, (message) =>
+          callback(message.data),
+        ),
+    },
+  };
+
   return api;
 }

@@ -4,6 +4,7 @@ import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import ThreadSidebar from "../components/Sidebar";
+import { RemoteBanner } from "../components/RemoteBanner";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
@@ -119,7 +120,10 @@ function ChatRouteLayout() {
       >
         <ThreadSidebar />
       </Sidebar>
-      <Outlet />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <RemoteBanner />
+        <Outlet />
+      </div>
     </SidebarProvider>
   );
 }

@@ -23,6 +23,8 @@ import type {
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
 } from "./project";
 import type { ServerConfig } from "./server";
 import type {
@@ -94,6 +96,13 @@ export interface DesktopUpdateActionResult {
   state: DesktopUpdateState;
 }
 
+export interface DesktopRendererLogEntry {
+  level: "info" | "warn" | "error";
+  scope: string;
+  message: string;
+  details?: string;
+}
+
 export interface DesktopBridge {
   getWsUrl: () => string | null;
   pickFolder: () => Promise<string | null>;
@@ -106,9 +115,11 @@ export interface DesktopBridge {
   openExternal: (url: string) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
+  checkForUpdates: () => Promise<DesktopUpdateState>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  logRenderer: (entry: DesktopRendererLogEntry) => Promise<void>;
 }
 
 export interface NativeApi {
@@ -128,6 +139,7 @@ export interface NativeApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
@@ -155,6 +167,10 @@ export interface NativeApi {
       items: readonly ContextMenuItem<T>[],
       position?: { x: number; y: number },
     ) => Promise<T | null>;
+  };
+  sessions: {
+    setRemoteSharing: (input: { threadId: string; shared: boolean }) => Promise<{ shared: boolean }>;
+    getRemoteSharing: (input: { threadId: string }) => Promise<{ shared: boolean }>;
   };
   server: {
     getConfig: () => Promise<ServerConfig>;

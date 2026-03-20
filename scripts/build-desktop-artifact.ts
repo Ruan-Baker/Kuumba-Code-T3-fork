@@ -425,10 +425,11 @@ function resolveGitHubPublishConfig():
       readonly releaseType: "release";
     }
   | undefined {
+  const defaultRepository = "Ruan-Baker/Kuumba-Code-T3-fork";
   const rawRepo =
     process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
     process.env.GITHUB_REPOSITORY?.trim() ||
-    "";
+    defaultRepository;
   if (!rawRepo) return undefined;
 
   const [owner, repo, ...rest] = rawRepo.split("/");

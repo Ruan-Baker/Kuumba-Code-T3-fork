@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { toastManager } from "~/components/ui/toast";
 import {
   speak,
   stop,
@@ -22,6 +23,19 @@ export function useTTS() {
       stop(); // Stop TTS when component unmounts
     };
   }, []);
+
+  useEffect(() => {
+    if (status.state !== "error" || !status.error) {
+      return;
+    }
+
+    toastManager.add({
+      type: "error",
+      title: "Read aloud failed",
+      description: status.error,
+      dismissAfterVisibleMs: 8000,
+    });
+  }, [status]);
 
   const safeSetStatus = useCallback((s: TTSStatus) => {
     if (isMounted.current) setStatus(s);

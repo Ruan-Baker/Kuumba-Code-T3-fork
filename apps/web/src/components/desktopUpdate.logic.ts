@@ -32,12 +32,76 @@ export function shouldShowDesktopUpdateButton(state: DesktopUpdateState | null):
   return resolveDesktopUpdateButtonAction(state) !== "none";
 }
 
+export function isDesktopUpdateCheckInProgress(state: DesktopUpdateState | null): boolean {
+  return state?.status === "checking";
+}
+
 export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | null): boolean {
   return state?.hostArch === "arm64" && state.appArch === "x64";
 }
 
 export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
-  return state?.status === "downloading";
+  return state?.status === "downloading" || state?.status === "checking";
+}
+
+export function getDesktopUpdatePrimaryButtonLabel(state: DesktopUpdateState | null): string {
+  if (!state || state.status === "idle" || state.status === "up-to-date") {
+    return "Check for updates";
+  }
+  if (state.status === "checking") {
+    return "Checking...";
+  }
+  if (state.status === "downloading") {
+    const progress =
+      typeof state.downloadPercent === "number" ? ` ${Math.floor(state.downloadPercent)}%` : "";
+    return `Downloading${progress}`;
+  }
+
+  const action = resolveDesktopUpdateButtonAction(state);
+  if (action === "download") {
+    return state.status === "error" && state.errorContext === "download"
+      ? "Retry download"
+      : "Download update";
+  }
+  if (action === "install") {
+    return state.status === "error" && state.errorContext === "install"
+      ? "Retry install"
+      : "Restart to update";
+  }
+  if (state.status === "error" && state.errorContext === "check") {
+    return "Check again";
+  }
+  return "Check for updates";
+}
+
+export function getDesktopUpdateStatusMessage(state: DesktopUpdateState | null): string {
+  if (!state) {
+    return "Check GitHub Releases for a newer desktop build.";
+  }
+  if (!state.enabled) {
+    return state.message ?? "Automatic updates are unavailable in this build.";
+  }
+  if (state.status === "checking") {
+    return "Checking GitHub Releases for a newer version.";
+  }
+  if (state.status === "up-to-date") {
+    return "You're on the latest version.";
+  }
+  if (state.status === "available") {
+    return `Update ${state.availableVersion ?? "available"} is ready to download.`;
+  }
+  if (state.status === "downloading") {
+    return typeof state.downloadPercent === "number"
+      ? `Downloading update ${Math.floor(state.downloadPercent)}%.`
+      : "Downloading update.";
+  }
+  if (state.status === "downloaded") {
+    return `Update ${state.downloadedVersion ?? state.availableVersion ?? "ready"} is downloaded and ready to install.`;
+  }
+  if (state.status === "error") {
+    return state.message ?? "Update check failed.";
+  }
+  return "Check GitHub Releases for a newer version.";
 }
 
 export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {

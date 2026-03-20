@@ -7,6 +7,7 @@
  * @module Server
  */
 import http from "node:http";
+import os from "node:os";
 import type { Duplex } from "node:stream";
 
 import Mime from "@effect/platform-node/Mime";
@@ -269,8 +270,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   );
 
   const providerStatuses = yield* providerHealth.getStatuses;
+  const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
 
   const clients = yield* Ref.make(new Set<WebSocket>());
+  /** In-memory set of thread IDs that are shared remotely. Resets on server restart. */
+  const sharedThreadIds = new Set<string>();
   const logger = createLogger("ws");
   const readiness = yield* makeServerReadiness;
 
@@ -425,6 +429,37 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       Effect.gen(function* () {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
         if (tryHandleProjectFaviconRequest(url, res)) {
+          return;
+        }
+
+        // Device info endpoint for remote session discovery
+        if (url.pathname === "/api/device-info") {
+          const snapshot = yield* projectionSnapshotQuery.getSnapshot().pipe(
+            Effect.catch(() => Effect.succeed({ projects: [] as any[], threads: [] as any[], snapshotSequence: 0 })),
+          );
+          const sessions = (snapshot.threads as any[])
+            .filter((t) => t.session && t.session.status !== "stopped" && sharedThreadIds.has(t.id))
+            .map((t) => {
+              const project = (snapshot.projects as any[]).find((p) => p.id === t.projectId);
+              return {
+                threadId: t.id,
+                projectId: t.projectId,
+                projectName: project?.name ?? "Unknown",
+                projectCwd: project?.cwd ?? "",
+                status: t.session?.status ?? "idle",
+                title: t.title ?? "",
+              };
+            });
+          const deviceInfo = {
+            deviceId: serverConfig.deviceId ?? `${os.hostname()}-${port}`,
+            deviceName: serverConfig.deviceName ?? os.hostname(),
+            port,
+            sessions,
+          };
+          respond(200, {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }, JSON.stringify(deviceInfo));
           return;
         }
 
@@ -599,7 +634,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const listenOptions = host ? { host, port } : { port };
 
   const orchestrationEngine = yield* OrchestrationEngineService;
-  const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
+  const projectionReadModelQuery = projectionSnapshotQuery;
   const checkpointDiffQuery = yield* CheckpointDiffQuery;
   const orchestrationReactor = yield* OrchestrationReactor;
   const { openInEditor } = yield* Open;
@@ -774,6 +809,50 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           ),
         );
         return { relativePath: target.relativePath };
+      }
+
+      case WS_METHODS.projectsReadFile: {
+        const body = stripRequestTag(request.body);
+        const target = yield* resolveWorkspaceWritePath({
+          workspaceRoot: body.cwd,
+          relativePath: body.relativePath,
+          path,
+        });
+        const exists = yield* fileSystem.exists(target.absolutePath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new RouteRequestError({
+                message: `Failed to check workspace file existence: ${String(cause)}`,
+              }),
+          ),
+        );
+        if (!exists) {
+          return { contents: null };
+        }
+        const contents = yield* fileSystem.readFileString(target.absolutePath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new RouteRequestError({
+                message: `Failed to read workspace file: ${String(cause)}`,
+              }),
+          ),
+        );
+        return { contents };
+      }
+
+      case WS_METHODS.sessionsSetRemoteSharing: {
+        const body = stripRequestTag(request.body);
+        if (body.shared) {
+          sharedThreadIds.add(body.threadId);
+        } else {
+          sharedThreadIds.delete(body.threadId);
+        }
+        return { shared: body.shared };
+      }
+
+      case WS_METHODS.sessionsGetRemoteSharing: {
+        const body = stripRequestTag(request.body);
+        return { shared: sharedThreadIds.has(body.threadId) };
       }
 
       case WS_METHODS.shellOpenInEditor: {

@@ -17,10 +17,13 @@ import { Debouncer } from "@tanstack/react-pacer";
 
 // ── State ────────────────────────────────────────────────────────────
 
+export type SidebarTab = "local" | "remote";
+
 export interface AppState {
   projects: Project[];
   threads: Thread[];
   threadsHydrated: boolean;
+  sidebarTab: SidebarTab;
 }
 
 const PERSISTED_STATE_KEY = "t3code:renderer-state:v8";
@@ -40,6 +43,7 @@ const initialState: AppState = {
   projects: [],
   threads: [],
   threadsHydrated: false,
+  sidebarTab: "local",
 };
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
@@ -436,6 +440,7 @@ interface AppStore extends AppState {
   reorderProjects: (draggedProjectId: Project["id"], targetProjectId: Project["id"]) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (threadId: ThreadId, branch: string | null, worktreePath: string | null) => void;
+  setSidebarTab: (tab: SidebarTab) => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -452,6 +457,7 @@ export const useStore = create<AppStore>((set) => ({
   setError: (threadId, error) => set((state) => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set((state) => setThreadBranch(state, threadId, branch, worktreePath)),
+  setSidebarTab: (tab) => set({ sidebarTab: tab }),
 }));
 
 // Persist state changes with debouncing to avoid localStorage thrashing

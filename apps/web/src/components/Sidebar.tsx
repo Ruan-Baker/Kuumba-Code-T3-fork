@@ -28,7 +28,6 @@ import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
-  type DesktopUpdateState,
   ProjectId,
   ThreadId,
   type GitStatusResult,
@@ -48,19 +47,10 @@ import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { toastManager } from "./ui/toast";
-import {
-  getArm64IntelBuildWarningDescription,
-  getDesktopUpdateActionError,
-  getDesktopUpdateButtonTooltip,
-  isDesktopUpdateButtonDisabled,
-  resolveDesktopUpdateButtonAction,
-  shouldShowArm64IntelBuildWarning,
-  shouldHighlightDesktopUpdateError,
-  shouldShowDesktopUpdateButton,
-  shouldToastDesktopUpdateActionResult,
-} from "./desktopUpdate.logic";
+import { shouldHighlightDesktopUpdateError } from "./desktopUpdate.logic";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
@@ -90,6 +80,9 @@ import {
   shouldClearThreadSelectionOnMouseDown,
 } from "./Sidebar.logic";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { ProjectNotesPopover } from "./ProjectNotesPopover";
+import { RemoteSessionsContent } from "./RemoteSessionsContent";
+import type { SidebarTab } from "../store";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 6;
@@ -298,7 +291,6 @@ export default function Sidebar() {
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
   const dragInProgressRef = useRef(false);
   const suppressProjectClickAfterDragRef = useRef(false);
-  const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
   const selectedThreadIds = useThreadSelectionStore((s) => s.selectedThreadIds);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
@@ -1002,55 +994,16 @@ export default function Sidebar() {
     };
   }, [clearSelection, selectedThreadIds.size]);
 
-  useEffect(() => {
-    if (!isElectron) return;
-    const bridge = window.desktopBridge;
-    if (
-      !bridge ||
-      typeof bridge.getUpdateState !== "function" ||
-      typeof bridge.onUpdateState !== "function"
-    ) {
-      return;
-    }
-
-    let disposed = false;
-    let receivedSubscriptionUpdate = false;
-    const unsubscribe = bridge.onUpdateState((nextState) => {
-      if (disposed) return;
-      receivedSubscriptionUpdate = true;
-      setDesktopUpdateState(nextState);
-    });
-
-    void bridge
-      .getUpdateState()
-      .then((nextState) => {
-        if (disposed || receivedSubscriptionUpdate) return;
-        setDesktopUpdateState(nextState);
-      })
-      .catch(() => undefined);
-
-    return () => {
-      disposed = true;
-      unsubscribe();
-    };
-  }, []);
-
-  const showDesktopUpdateButton = isElectron && shouldShowDesktopUpdateButton(desktopUpdateState);
-
-  const desktopUpdateTooltip = desktopUpdateState
-    ? getDesktopUpdateButtonTooltip(desktopUpdateState)
-    : "Update available";
-
-  const desktopUpdateButtonDisabled = isDesktopUpdateButtonDisabled(desktopUpdateState);
-  const desktopUpdateButtonAction = desktopUpdateState
-    ? resolveDesktopUpdateButtonAction(desktopUpdateState)
-    : "none";
-  const showArm64IntelBuildWarning =
-    isElectron && shouldShowArm64IntelBuildWarning(desktopUpdateState);
-  const arm64IntelBuildWarningDescription =
-    desktopUpdateState && showArm64IntelBuildWarning
-      ? getArm64IntelBuildWarningDescription(desktopUpdateState)
-      : null;
+  const {
+    desktopUpdateState,
+    showDesktopUpdateButton,
+    desktopUpdateTooltip,
+    desktopUpdateButtonDisabled,
+    desktopUpdateButtonAction,
+    showArm64IntelBuildWarning,
+    arm64IntelBuildWarningDescription,
+    handlePrimaryAction: handleDesktopUpdateButtonClick,
+  } = useDesktopUpdate();
   const desktopUpdateButtonInteractivityClasses = desktopUpdateButtonDisabled
     ? "cursor-not-allowed opacity-60"
     : "hover:bg-accent hover:text-foreground";
@@ -1068,64 +1021,6 @@ export default function Sidebar() {
       shortcutLabelForCommand(keybindings, "chat.new"),
     [keybindings],
   );
-
-  const handleDesktopUpdateButtonClick = useCallback(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge || !desktopUpdateState) return;
-    if (desktopUpdateButtonDisabled || desktopUpdateButtonAction === "none") return;
-
-    if (desktopUpdateButtonAction === "download") {
-      void bridge
-        .downloadUpdate()
-        .then((result) => {
-          if (result.completed) {
-            toastManager.add({
-              type: "success",
-              title: "Update downloaded",
-              description: "Restart the app from the update button to install it.",
-            });
-          }
-          if (!shouldToastDesktopUpdateActionResult(result)) return;
-          const actionError = getDesktopUpdateActionError(result);
-          if (!actionError) return;
-          toastManager.add({
-            type: "error",
-            title: "Could not download update",
-            description: actionError,
-          });
-        })
-        .catch((error) => {
-          toastManager.add({
-            type: "error",
-            title: "Could not start update download",
-            description: error instanceof Error ? error.message : "An unexpected error occurred.",
-          });
-        });
-      return;
-    }
-
-    if (desktopUpdateButtonAction === "install") {
-      void bridge
-        .installUpdate()
-        .then((result) => {
-          if (!shouldToastDesktopUpdateActionResult(result)) return;
-          const actionError = getDesktopUpdateActionError(result);
-          if (!actionError) return;
-          toastManager.add({
-            type: "error",
-            title: "Could not install update",
-            description: actionError,
-          });
-        })
-        .catch((error) => {
-          toastManager.add({
-            type: "error",
-            title: "Could not install update",
-            description: error instanceof Error ? error.message : "An unexpected error occurred.",
-          });
-        });
-    }
-  }, [desktopUpdateButtonAction, desktopUpdateButtonDisabled, desktopUpdateState]);
 
   const expandThreadListForProject = useCallback((projectId: ProjectId) => {
     setExpandedThreadListsByProject((current) => {
@@ -1169,39 +1064,41 @@ export default function Sidebar() {
     </div>
   );
 
+  const sidebarTab = useStore((store) => store.sidebarTab);
+  const setSidebarTab = useStore((store) => store.setSidebarTab);
+
   return (
     <>
-      {isElectron ? (
-        <>
-          <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 pl-[90px]">
-            {wordmark}
-            {showDesktopUpdateButton && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={desktopUpdateTooltip}
-                      aria-disabled={desktopUpdateButtonDisabled || undefined}
-                      disabled={desktopUpdateButtonDisabled}
-                      className={`inline-flex size-7 ml-auto mt-1.5 items-center justify-center rounded-md text-muted-foreground transition-colors ${desktopUpdateButtonInteractivityClasses} ${desktopUpdateButtonClasses}`}
-                      onClick={handleDesktopUpdateButtonClick}
-                    >
-                      <RocketIcon className="size-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipPopup side="bottom">{desktopUpdateTooltip}</TooltipPopup>
-              </Tooltip>
-            )}
-          </SidebarHeader>
-        </>
-      ) : (
-        <SidebarHeader className="gap-3 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-3">
-          {wordmark}
-        </SidebarHeader>
-      )}
+      <SidebarHeader className={`gap-0 px-0 py-0 ${isElectron ? "drag-region h-[52px] pl-[90px] pr-2 flex-row items-center" : "px-2 py-2"}`}>
+        <div className="flex w-full">
+          <button
+            type="button"
+            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+              sidebarTab === "local"
+                ? "bg-secondary text-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            } ${isElectron ? "rounded-l-md" : "rounded-tl-md"}`}
+            onClick={() => setSidebarTab("local")}
+          >
+            Local
+          </button>
+          <button
+            type="button"
+            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+              sidebarTab === "remote"
+                ? "bg-secondary text-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            } ${isElectron ? "rounded-r-md" : "rounded-tr-md"}`}
+            onClick={() => setSidebarTab("remote")}
+          >
+            Remote
+          </button>
+        </div>
+      </SidebarHeader>
 
+      {sidebarTab === "remote" ? (
+        <RemoteSessionsContent />
+      ) : (
       <SidebarContent className="gap-0">
         {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
           <SidebarGroup className="px-2 pt-2 pb-0">
@@ -1412,6 +1309,7 @@ export default function Sidebar() {
                                   : "New thread"}
                               </TooltipPopup>
                             </Tooltip>
+                            <ProjectNotesPopover projectCwd={project.cwd} projectName={project.name} />
                           </div>
 
                           <CollapsibleContent keepMounted>
@@ -1646,6 +1544,7 @@ export default function Sidebar() {
           )}
         </SidebarGroup>
       </SidebarContent>
+      )}
 
       <SidebarSeparator />
       <SidebarFooter className="p-2">

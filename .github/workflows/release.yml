@@ -144,6 +144,7 @@ jobs:
       - name: Build desktop artifact
         shell: bash
         env:
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: Ruan-Baker/Kuumba-Code-T3-fork
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}

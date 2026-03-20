@@ -6,6 +6,8 @@
  *
  * @module CliConfig
  */
+import os from "node:os";
+import crypto from "node:crypto";
 import { Config, Data, Effect, FileSystem, Layer, Option, Path, Schema, ServiceMap } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { NetService } from "@t3tools/shared/Net";
@@ -42,6 +44,7 @@ interface CliInput {
   readonly authToken: Option.Option<string>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
   readonly logWebSocketEvents: Option.Option<boolean>;
+  readonly deviceName: Option.Option<string>;
 }
 
 /**
@@ -120,6 +123,10 @@ const CliEnvConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  deviceName: Config.string("T3CODE_DEVICE_NAME").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
 });
 
 const resolveBooleanFlag = (flag: Option.Option<boolean>, envValue: boolean) =>
@@ -174,6 +181,43 @@ const ServerConfigLive = (input: CliInput) =>
         env.host ??
         (mode === "desktop" ? "127.0.0.1" : undefined);
 
+      // Resolve device identity — persist to stateDir/device.json on first launch
+      const deviceJsonPath = join(stateDir, "device.json");
+      let deviceId: string | undefined;
+      let resolvedDeviceName: string | undefined;
+      try {
+        const deviceJsonRaw = yield* Effect.tryPromise({
+          try: () =>
+            import("node:fs/promises").then((fs) => fs.readFile(deviceJsonPath, "utf-8")),
+          catch: () => null,
+        }).pipe(Effect.catch(() => Effect.succeed(null)));
+        if (deviceJsonRaw) {
+          const parsed = JSON.parse(deviceJsonRaw);
+          deviceId = parsed.deviceId;
+          resolvedDeviceName = parsed.deviceName;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+      if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        resolvedDeviceName =
+          Option.getOrUndefined(input.deviceName) ?? env.deviceName ?? os.hostname();
+        yield* Effect.tryPromise({
+          try: () =>
+            import("node:fs/promises").then((fs) =>
+              fs.writeFile(
+                deviceJsonPath,
+                JSON.stringify({ deviceId, deviceName: resolvedDeviceName }, null, 2),
+              ),
+            ),
+          catch: () => null,
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+      }
+      // CLI/env override for device name
+      const deviceName =
+        Option.getOrUndefined(input.deviceName) ?? env.deviceName ?? resolvedDeviceName;
+
       const config: ServerConfigShape = {
         mode,
         port,
@@ -187,6 +231,8 @@ const ServerConfigLive = (input: CliInput) =>
         authToken,
         autoBootstrapProjectFromCwd,
         logWebSocketEvents,
+        deviceId,
+        deviceName,
       } satisfies ServerConfigShape;
 
       return config;
@@ -330,6 +376,10 @@ const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
+const deviceNameFlag = Flag.string("device-name").pipe(
+  Flag.withDescription("Human-readable device name for remote session discovery (equivalent to T3CODE_DEVICE_NAME)."),
+  Flag.optional,
+);
 
 export const t3Cli = Command.make("t3", {
   mode: modeFlag,
@@ -341,6 +391,7 @@ export const t3Cli = Command.make("t3", {
   authToken: authTokenFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
+  deviceName: deviceNameFlag,
 }).pipe(
   Command.withDescription("Run the T3 Code server."),
   Command.withHandler((input) => Effect.scoped(makeServerProgram(input))),

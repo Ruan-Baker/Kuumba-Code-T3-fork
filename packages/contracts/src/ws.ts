@@ -34,7 +34,7 @@ import {
   TerminalWriteInput,
 } from "./terminal";
 import { KeybindingRule } from "./keybindings";
-import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
+import { ProjectSearchEntriesInput, ProjectWriteFileInput, ProjectReadFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload } from "./server";
 
@@ -47,6 +47,7 @@ export const WS_METHODS = {
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  projectsReadFile: "projects.readFile",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -71,6 +72,10 @@ export const WS_METHODS = {
   terminalClear: "terminal.clear",
   terminalRestart: "terminal.restart",
   terminalClose: "terminal.close",
+
+  // Session sharing
+  sessionsSetRemoteSharing: "sessions.setRemoteSharing",
+  sessionsGetRemoteSharing: "sessions.getRemoteSharing",
 
   // Server meta
   serverGetConfig: "server.getConfig",
@@ -111,6 +116,7 @@ const WebSocketRequestBody = Schema.Union([
   // Project Search
   tagRequestBody(WS_METHODS.projectsSearchEntries, ProjectSearchEntriesInput),
   tagRequestBody(WS_METHODS.projectsWriteFile, ProjectWriteFileInput),
+  tagRequestBody(WS_METHODS.projectsReadFile, ProjectReadFileInput),
 
   // Shell methods
   tagRequestBody(WS_METHODS.shellOpenInEditor, OpenInEditorInput),
@@ -135,6 +141,15 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.terminalClear, TerminalClearInput),
   tagRequestBody(WS_METHODS.terminalRestart, TerminalRestartInput),
   tagRequestBody(WS_METHODS.terminalClose, TerminalCloseInput),
+
+  // Session sharing
+  tagRequestBody(WS_METHODS.sessionsSetRemoteSharing, Schema.Struct({
+    threadId: TrimmedNonEmptyString,
+    shared: Schema.Boolean,
+  })),
+  tagRequestBody(WS_METHODS.sessionsGetRemoteSharing, Schema.Struct({
+    threadId: TrimmedNonEmptyString,
+  })),
 
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),

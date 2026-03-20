@@ -31,6 +31,14 @@ const withDefaults =
       Schema.withDecodingDefault(() => fallback()),
     );
 
+export const RemoteDeviceConfigSchema = Schema.Struct({
+  name: Schema.String,
+  tailscaleHost: Schema.String,
+  port: Schema.Number,
+  authToken: Schema.String,
+});
+export type RemoteDeviceConfig = typeof RemoteDeviceConfigSchema.Type;
+
 export const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -41,6 +49,7 @@ export const AppSettingsSchema = Schema.Struct({
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
+  remoteDevices: Schema.Array(RemoteDeviceConfigSchema).pipe(withDefaults(() => [])),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {

@@ -24,6 +24,7 @@ import { onServerConfigUpdated, onServerWelcome } from "../wsNativeApi";
 import { providerQueryKeys } from "../lib/providerReactQuery";
 import { projectQueryKeys } from "../lib/projectReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
+import { installGlobalRendererDiagnostics } from "../lib/rendererDiagnostics";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -53,6 +54,7 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <EventRouter />
         <DesktopProjectBootstrap />
+        <RendererDiagnostics />
         <Outlet />
       </AnchoredToastProvider>
     </ToastProvider>
@@ -323,5 +325,13 @@ function EventRouter() {
 
 function DesktopProjectBootstrap() {
   // Desktop hydration runs through EventRouter project + orchestration sync.
+  return null;
+}
+
+function RendererDiagnostics() {
+  useEffect(() => {
+    installGlobalRendererDiagnostics();
+  }, []);
+
   return null;
 }

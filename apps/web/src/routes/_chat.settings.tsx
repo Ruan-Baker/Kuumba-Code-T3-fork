@@ -6,6 +6,7 @@ import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
+import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
 import { useTheme } from "../hooks/useTheme";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
@@ -20,7 +21,200 @@ import {
 } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
+import {
+  getDesktopUpdatePrimaryButtonLabel,
+  getDesktopUpdateStatusMessage,
+} from "../components/desktopUpdate.logic";
 import { SidebarInset } from "~/components/ui/sidebar";
+import { PencilIcon, PlusIcon, TrashIcon, MonitorIcon } from "lucide-react";
+import { DeviceQRCode } from "~/components/DeviceQRCode";
+import type { RemoteDeviceConfig } from "~/appSettings";
+
+// ── Remote Devices Settings ───────────────────────────────────────────
+
+function createEmptyDevice(): RemoteDeviceConfig {
+  return { name: "", tailscaleHost: "", port: 3773, authToken: "" };
+}
+
+function RemoteDevicesSettings({
+  devices,
+  onUpdate,
+}: {
+  devices: readonly RemoteDeviceConfig[];
+  onUpdate: (devices: RemoteDeviceConfig[]) => void;
+}) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draft, setDraft] = useState<RemoteDeviceConfig>(createEmptyDevice);
+  const [isAdding, setIsAdding] = useState(false);
+
+  const startAdd = () => {
+    setDraft(createEmptyDevice());
+    setEditingIndex(null);
+    setIsAdding(true);
+  };
+
+  const startEdit = (index: number) => {
+    setDraft({ ...devices[index]! });
+    setEditingIndex(index);
+    setIsAdding(true);
+  };
+
+  const cancelEdit = () => {
+    setIsAdding(false);
+    setEditingIndex(null);
+    setDraft(createEmptyDevice());
+  };
+
+  const saveDevice = () => {
+    if (!draft.name.trim() || !draft.tailscaleHost.trim()) return;
+    const updated = [...devices];
+    if (editingIndex !== null) {
+      updated[editingIndex] = draft;
+    } else {
+      updated.push(draft);
+    }
+    onUpdate(updated);
+    cancelEdit();
+  };
+
+  const removeDevice = (index: number) => {
+    onUpdate(devices.filter((_, i) => i !== index));
+  };
+
+  const isFormValid = draft.name.trim() !== "" && draft.tailscaleHost.trim() !== "" && draft.port > 0;
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-medium text-foreground">Remote Devices</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Configure other machines running Kuumba Code. Sessions from these devices appear in the
+          Remote tab of the sidebar.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {/* Existing devices list */}
+        {devices.length > 0 ? (
+          <div className="space-y-2">
+            {devices.map((device, index) => (
+              <div
+                key={`${device.tailscaleHost}:${device.port}`}
+                className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2"
+              >
+                <MonitorIcon className="size-4 shrink-0 text-muted-foreground/60" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-foreground truncate">{device.name}</p>
+                  <p className="text-[11px] text-muted-foreground font-mono truncate">
+                    {device.tailscaleHost}:{device.port}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => startEdit(index)}
+                    aria-label={`Edit ${device.name}`}
+                  >
+                    <PencilIcon className="size-3" />
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => removeDevice(index)}
+                    aria-label={`Remove ${device.name}`}
+                  >
+                    <TrashIcon className="size-3 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-border bg-background px-3 py-4 text-center text-xs text-muted-foreground">
+            No remote devices configured yet. Add a device to see its sessions in the Remote tab.
+          </div>
+        )}
+
+        {/* Add/Edit form */}
+        {isAdding ? (
+          <div className="rounded-xl border border-border bg-background/50 p-4 space-y-3">
+            <h3 className="text-xs font-medium text-foreground">
+              {editingIndex !== null ? "Edit Device" : "Add Device"}
+            </h3>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">Device name</span>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                placeholder="e.g. Desktop, Work Laptop"
+                spellCheck={false}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">Tailscale hostname or IP</span>
+              <Input
+                value={draft.tailscaleHost}
+                onChange={(e) => setDraft({ ...draft, tailscaleHost: e.target.value })}
+                placeholder="e.g. my-desktop.tail12345.ts.net"
+                spellCheck={false}
+              />
+              <span className="text-[11px] text-muted-foreground">
+                The Tailscale MagicDNS name or IP address of the remote machine.
+              </span>
+            </label>
+
+            <div className="flex gap-3">
+              <label className="block flex-1 space-y-1">
+                <span className="text-xs font-medium text-foreground">Port</span>
+                <Input
+                  type="number"
+                  value={draft.port}
+                  onChange={(e) => setDraft({ ...draft, port: Number(e.target.value) || 3773 })}
+                  placeholder="3773"
+                />
+              </label>
+
+              <label className="block flex-[2] space-y-1">
+                <span className="text-xs font-medium text-foreground">Auth token</span>
+                <Input
+                  type="password"
+                  value={draft.authToken}
+                  onChange={(e) => setDraft({ ...draft, authToken: e.target.value })}
+                  placeholder="T3CODE_AUTH_TOKEN value"
+                  spellCheck={false}
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button size="xs" variant="outline" onClick={cancelEdit}>
+                Cancel
+              </Button>
+              <Button size="xs" onClick={saveDevice} disabled={!isFormValid}>
+                {editingIndex !== null ? "Save Changes" : "Add Device"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={startAdd} className="w-full gap-1.5">
+            <PlusIcon className="size-3.5" />
+            Add remote device
+          </Button>
+        )}
+
+        {/* Mobile Connection QR Code */}
+        <div className="rounded-xl border border-border bg-background/50 p-4">
+          <DeviceQRCode />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Theme / Constants ─────────────────────────────────────────────────
 
 const THEME_OPTIONS = [
   {
@@ -68,6 +262,7 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+const DESKTOP_UPDATE_REPOSITORY = "Ruan-Baker/Kuumba-Code-T3-fork";
 
 function getCustomModelsForProvider(
   settings: ReturnType<typeof useAppSettings>["settings"],
@@ -120,6 +315,12 @@ function SettingsRouteView() {
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
   >({});
+  const {
+    desktopUpdateState,
+    desktopUpdateButtonDisabled,
+    desktopUpdateButtonAction,
+    handlePrimaryAction: handleDesktopUpdatePrimaryAction,
+  } = useDesktopUpdate();
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
@@ -136,6 +337,9 @@ function SettingsRouteView() {
       (option) =>
         option.slug === (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL),
     )?.name ?? settings.textGenerationModel;
+  const desktopUpdatePrimaryButtonLabel = getDesktopUpdatePrimaryButtonLabel(desktopUpdateState);
+  const desktopUpdateStatusMessage = getDesktopUpdateStatusMessage(desktopUpdateState);
+  const shouldShowDesktopUpdateSection = isElectron;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -332,6 +536,11 @@ function SettingsRouteView() {
                 ) : null}
               </div>
             </section>
+
+            <RemoteDevicesSettings
+              devices={settings.remoteDevices}
+              onUpdate={(remoteDevices) => updateSettings({ remoteDevices })}
+            />
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
@@ -767,6 +976,28 @@ function SettingsRouteView() {
                 </div>
                 <code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>
               </div>
+
+              {shouldShowDesktopUpdateSection ? (
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Updates</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {desktopUpdateStatusMessage}
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Checks releases from <code>{DESKTOP_UPDATE_REPOSITORY}</code>.
+                    </p>
+                  </div>
+                  <Button
+                    size="xs"
+                    variant={desktopUpdateButtonAction === "install" ? "default" : "outline"}
+                    disabled={desktopUpdateButtonDisabled}
+                    onClick={handleDesktopUpdatePrimaryAction}
+                  >
+                    {desktopUpdatePrimaryButtonLabel}
+                  </Button>
+                </div>
+              ) : null}
             </section>
           </div>
         </div>

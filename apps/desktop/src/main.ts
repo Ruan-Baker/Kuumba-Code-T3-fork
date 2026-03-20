@@ -18,6 +18,7 @@ import {
 import type { MenuItemConstructorOptions } from "electron";
 import * as Effect from "effect/Effect";
 import type {
+  DesktopRendererLogEntry,
   DesktopTheme,
   DesktopUpdateActionResult,
   DesktopUpdateState,
@@ -54,8 +55,10 @@ const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
+const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const RENDERER_LOG_CHANNEL = "desktop:renderer-log";
 const STATE_DIR =
   process.env.KUUMBA_STATE_DIR?.trim() || Path.join(OS.homedir(), ".kuumba", "userdata");
 const DESKTOP_SCHEME = "kuumba";
@@ -116,6 +119,14 @@ function sanitizeLogValue(value: string): string {
 function writeDesktopLogHeader(message: string): void {
   if (!desktopLogSink) return;
   desktopLogSink.write(`[${logTimestamp()}] [${logScope("desktop")}] ${message}\n`);
+}
+
+function writeRendererLog(entry: DesktopRendererLogEntry): void {
+  if (!desktopLogSink) return;
+  const details = entry.details ? ` details=${sanitizeLogValue(entry.details)}` : "";
+  desktopLogSink.write(
+    `[${logTimestamp()}] [${logScope(`renderer.${entry.level}`)}] scope=${sanitizeLogValue(entry.scope)} message=${sanitizeLogValue(entry.message)}${details}\n`,
+  );
 }
 
 function writeBackendSessionBoundary(phase: "START" | "END", details: string): void {
@@ -557,6 +568,31 @@ async function checkForUpdatesFromMenu(): Promise<void> {
       buttons: ["OK"],
     });
   }
+}
+
+async function checkForUpdatesFromUi(): Promise<DesktopUpdateState> {
+  const disabledReason = getAutoUpdateDisabledReason({
+    isDevelopment,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    appImage: process.env.APPIMAGE,
+    disabledByEnv: process.env.T3CODE_DISABLE_AUTO_UPDATE === "1",
+  });
+
+  if (disabledReason) {
+    setUpdateState({
+      enabled: false,
+      status: "disabled",
+      message: disabledReason,
+      checkedAt: new Date().toISOString(),
+      errorContext: null,
+      canRetry: false,
+    });
+    return updateState;
+  }
+
+  await checkForUpdates("ui");
+  return updateState;
 }
 
 function configureApplicationMenu(): void {
@@ -1185,6 +1221,9 @@ function registerIpcHandlers(): void {
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
 
+  ipcMain.removeHandler(UPDATE_CHECK_CHANNEL);
+  ipcMain.handle(UPDATE_CHECK_CHANNEL, async () => checkForUpdatesFromUi());
+
   ipcMain.removeHandler(UPDATE_DOWNLOAD_CHANNEL);
   ipcMain.handle(UPDATE_DOWNLOAD_CHANNEL, async () => {
     const result = await downloadAvailableUpdate();
@@ -1210,6 +1249,29 @@ function registerIpcHandlers(): void {
       completed: result.completed,
       state: updateState,
     } satisfies DesktopUpdateActionResult;
+  });
+
+  ipcMain.removeHandler(RENDERER_LOG_CHANNEL);
+  ipcMain.handle(RENDERER_LOG_CHANNEL, async (_event, rawEntry: unknown) => {
+    if (typeof rawEntry !== "object" || rawEntry === null) {
+      return;
+    }
+
+    const entry = rawEntry as Partial<DesktopRendererLogEntry>;
+    if (
+      (entry.level !== "info" && entry.level !== "warn" && entry.level !== "error") ||
+      typeof entry.scope !== "string" ||
+      typeof entry.message !== "string"
+    ) {
+      return;
+    }
+
+    writeRendererLog({
+      level: entry.level,
+      scope: entry.scope,
+      message: entry.message,
+      details: typeof entry.details === "string" ? entry.details : undefined,
+    });
   });
 }
 
