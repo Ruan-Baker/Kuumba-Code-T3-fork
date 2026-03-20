@@ -50,11 +50,13 @@ jobs:
           # The effect-language-service patch requires typescript in each workspace's
           # local node_modules. Bun hoists it to root, so create symlinks where needed,
           # then run the patch explicitly.
-          TS_ROOT="$(pwd)/node_modules/.bun/$(ls node_modules/.bun | grep '^typescript@')/node_modules/typescript"
+          TS_ROOT="$(pwd)/node_modules/typescript"
           for dir in apps/web apps/server packages/shared packages/contracts scripts; do
             if [ -f "$dir/package.json" ] && grep -q "effect-language-service" "$dir/package.json"; then
               mkdir -p "$dir/node_modules"
-              ln -sfn "$TS_ROOT" "$dir/node_modules/typescript"
+              if [ ! -e "$dir/node_modules/typescript" ]; then
+                ln -sfn "$TS_ROOT" "$dir/node_modules/typescript"
+              fi
               cd "$dir" && npx effect-language-service patch && cd - > /dev/null
             fi
           done
