@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Option, Schema } from "effect";
 import { TrimmedNonEmptyString, type ProviderKind } from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+import { generateKeyPair } from "@t3tools/shared/e2e-crypto";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
 
@@ -196,6 +197,20 @@ export function useAppSettings() {
   const resetSettings = useCallback(() => {
     setSettings(DEFAULT_APP_SETTINGS);
   }, [setSettings]);
+
+  // Auto-generate device identity and E2E keys on first launch
+  useEffect(() => {
+    if (settings.devicePairingToken !== "") return;
+
+    void (async () => {
+      const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+      const devicePairingToken = Array.from(randomBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const { publicKey: e2ePublicKey, privateKey: e2ePrivateKey } = await generateKeyPair();
+      updateSettings({ devicePairingToken, e2ePublicKey, e2ePrivateKey });
+    })();
+  }, [settings.devicePairingToken, updateSettings]);
 
   return {
     settings,
