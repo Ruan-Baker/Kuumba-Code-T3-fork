@@ -31,6 +31,10 @@
     "./schemaJson": {
       "types": "./src/schemaJson.ts",
       "import": "./src/schemaJson.ts"
+    },
+    "./e2e-crypto": {
+      "types": "./src/e2e-crypto.ts",
+      "import": "./src/e2e-crypto.ts"
     }
   },
   "scripts": {
