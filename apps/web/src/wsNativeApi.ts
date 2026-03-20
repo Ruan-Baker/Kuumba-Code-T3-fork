@@ -10,6 +10,8 @@ import {
 } from "@t3tools/contracts";
 
 import { showContextMenuFallback } from "./contextMenuFallback";
+import { RelayWsBridge } from "./lib/relay-ws-bridge";
+import type { RelayTransport } from "./lib/relay-transport";
 import { WsTransport } from "./wsTransport";
 
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
@@ -269,4 +271,101 @@ export function createRemoteNativeApi(wsUrl: string): NativeApi {
   };
 
   return api;
+}
+
+/**
+ * Create a NativeApi backed by an end-to-end encrypted relay connection.
+ * The relay transport must already be connected and paired with targetDeviceId.
+ * Pass the returned `{ api, bridge }` so callers can wire up relay message
+ * routing:
+ *
+ *   relayTransport config onMessage: (fromId, _name, text) => {
+ *     if (fromId === targetDeviceId) bridge.handleRelayMessage(text);
+ *   }
+ *
+ * Has the same interface as `createRemoteNativeApi()` — the rest of the app
+ * does not need to know whether communication is direct or relayed.
+ */
+export function createRelayNativeApi(
+  relay: RelayTransport,
+  targetDeviceId: string,
+): { api: NativeApi; bridge: RelayWsBridge } {
+  const bridge = new RelayWsBridge(relay, targetDeviceId);
+
+  const api: NativeApi = {
+    dialogs: {
+      pickFolder: async () => null, // Not supported for remote
+      confirm: async (message) => window.confirm(message),
+    },
+    terminal: {
+      open: (input) => bridge.request(WS_METHODS.terminalOpen, input),
+      write: (input) => bridge.request(WS_METHODS.terminalWrite, input),
+      resize: (input) => bridge.request(WS_METHODS.terminalResize, input),
+      clear: (input) => bridge.request(WS_METHODS.terminalClear, input),
+      restart: (input) => bridge.request(WS_METHODS.terminalRestart, input),
+      close: (input) => bridge.request(WS_METHODS.terminalClose, input),
+      onEvent: (callback) =>
+        bridge.subscribe(WS_CHANNELS.terminalEvent, (message) => callback(message.data)),
+    },
+    projects: {
+      searchEntries: (input) => bridge.request(WS_METHODS.projectsSearchEntries, input),
+      writeFile: (input) => bridge.request(WS_METHODS.projectsWriteFile, input),
+      readFile: (input) => bridge.request(WS_METHODS.projectsReadFile, input),
+    },
+    shell: {
+      openInEditor: () => Promise.resolve(), // Not supported for remote
+      openExternal: async (url) => {
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
+    },
+    git: {
+      pull: (input) => bridge.request(WS_METHODS.gitPull, input),
+      status: (input) => bridge.request(WS_METHODS.gitStatus, input),
+      runStackedAction: (input) => bridge.request(WS_METHODS.gitRunStackedAction, input),
+      listBranches: (input) => bridge.request(WS_METHODS.gitListBranches, input),
+      createWorktree: (input) => bridge.request(WS_METHODS.gitCreateWorktree, input),
+      removeWorktree: (input) => bridge.request(WS_METHODS.gitRemoveWorktree, input),
+      createBranch: (input) => bridge.request(WS_METHODS.gitCreateBranch, input),
+      checkout: (input) => bridge.request(WS_METHODS.gitCheckout, input),
+      init: (input) => bridge.request(WS_METHODS.gitInit, input),
+      resolvePullRequest: (input) => bridge.request(WS_METHODS.gitResolvePullRequest, input),
+      preparePullRequestThread: (input) =>
+        bridge.request(WS_METHODS.gitPreparePullRequestThread, input),
+    },
+    contextMenu: {
+      show: async <T extends string>(
+        items: readonly ContextMenuItem<T>[],
+        position?: { x: number; y: number },
+      ): Promise<T | null> => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.showContextMenu(items, position) as Promise<T | null>;
+        }
+        return showContextMenuFallback(items, position);
+      },
+    },
+    sessions: {
+      setRemoteSharing: (input) => bridge.request(WS_METHODS.sessionsSetRemoteSharing, input),
+      getRemoteSharing: (input) => bridge.request(WS_METHODS.sessionsGetRemoteSharing, input),
+    },
+    server: {
+      getConfig: () => bridge.request(WS_METHODS.serverGetConfig),
+      upsertKeybinding: (input) => bridge.request(WS_METHODS.serverUpsertKeybinding, input),
+    },
+    orchestration: {
+      getSnapshot: () => bridge.request(ORCHESTRATION_WS_METHODS.getSnapshot),
+      dispatchCommand: (command) =>
+        bridge.request(ORCHESTRATION_WS_METHODS.dispatchCommand, { command }),
+      getTurnDiff: (input) => bridge.request(ORCHESTRATION_WS_METHODS.getTurnDiff, input),
+      getFullThreadDiff: (input) =>
+        bridge.request(ORCHESTRATION_WS_METHODS.getFullThreadDiff, input),
+      replayEvents: (fromSequenceExclusive) =>
+        bridge.request(ORCHESTRATION_WS_METHODS.replayEvents, { fromSequenceExclusive }),
+      onDomainEvent: (callback) =>
+        bridge.subscribe(ORCHESTRATION_WS_CHANNELS.domainEvent, (message) =>
+          callback(message.data),
+        ),
+    },
+  };
+
+  return { api, bridge };
 }
