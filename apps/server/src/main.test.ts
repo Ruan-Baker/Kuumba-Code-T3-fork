@@ -5,6 +5,7 @@ import type { OrchestrationReadModel } from "@t3tools/contracts";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as CliError from "effect/unstable/cli/CliError";
 import * as Command from "effect/unstable/cli/Command";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach } from "vitest";
@@ -59,7 +60,7 @@ const testLayer = Layer.mergeAll(
 const runCli = (
   args: ReadonlyArray<string>,
   env: Record<string, string> = { T3CODE_NO_BROWSER: "true" },
-): Effect.Effect<void, unknown, never> => {
+): Effect.Effect<void, CliError.CliError, never> => {
   const uniqueStateDir = `/tmp/t3-cli-state-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return Command.runWith(t3Cli, { version: "0.0.0-test" })(args).pipe(
     Effect.provide(
@@ -72,7 +73,7 @@ const runCli = (
         }),
       ),
     ),
-  ) as Effect.Effect<void, unknown, never>;
+  ) as Effect.Effect<void, CliError.CliError, never>;
 };
 
 beforeEach(() => {
