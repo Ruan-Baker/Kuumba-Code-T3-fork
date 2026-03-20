@@ -8,11 +8,12 @@ import {
   stripDisplayedPlanMarkdown,
 } from "../../proposedPlan";
 import ChatMarkdown from "../ChatMarkdown";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { cn } from "~/lib/utils";
+import { useTTS } from "~/lib/tts/useTTS";
 import { Badge } from "../ui/badge";
 import {
   Dialog,
@@ -40,6 +41,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   const [savePath, setSavePath] = useState("");
   const [isSavingToWorkspace, setIsSavingToWorkspace] = useState(false);
   const savePathInputId = useId();
+  const { isSpeaking, toggle: toggleTTS } = useTTS();
   const title = proposedPlanTitle(planMarkdown) ?? "Proposed plan";
   const lineCount = planMarkdown.split("\n").length;
   const canCollapse = planMarkdown.length > 900 || lineCount > 20;
@@ -130,6 +132,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
             <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
               Save to workspace
+            </MenuItem>
+            <MenuItem onClick={() => void toggleTTS(planMarkdown)}>
+              {isSpeaking ? (
+                <><VolumeXIcon className="size-4" /> Stop reading</>
+              ) : (
+                <><Volume2Icon className="size-4" /> Read plan aloud</>
+              )}
             </MenuItem>
           </MenuPopup>
         </Menu>

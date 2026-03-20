@@ -20,6 +20,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@lexical/react": "^0.41.0",
+    "@mintplex-labs/piper-tts-web": "^1.0.4",
     "@pierre/diffs": "^1.1.0-beta.16",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
