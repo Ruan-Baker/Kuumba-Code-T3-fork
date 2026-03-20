@@ -4,9 +4,6 @@
  * Uses @mintplex-labs/piper-tts-web which runs Piper voice models
  * entirely in the browser. Models are downloaded once on first use
  * and cached in IndexedDB.
- *
- * Fallback: If Piper fails to load (e.g., WASM not supported),
- * falls back to Web Speech API.
  */
 import * as piperTTS from "@mintplex-labs/piper-tts-web";
 
@@ -20,9 +17,14 @@ import * as piperTTS from "@mintplex-labs/piper-tts-web";
 
 const DEFAULT_VOICE_ID = "en_US-amy-medium";
 
+// ─── Playback speed ─────────────────────────────────────────────
+export const SPEED_STEPS = [1, 1.5, 2] as const;
+export type PlaybackSpeed = (typeof SPEED_STEPS)[number];
+
 // ─── State ───────────────────────────────────────────────────────
 let currentAudio: HTMLAudioElement | null = null;
 let isModelReady = false;
+let currentSpeed: PlaybackSpeed = 1;
 
 type StatusCallback = (status: TTSStatus) => void;
 
@@ -61,7 +63,7 @@ export async function preloadVoice(
 }
 
 /**
- * Speak text using Piper TTS. Falls back to Web Speech API on failure.
+ * Speak text using Piper TTS.
  */
 export async function speak(
   text: string,
@@ -96,6 +98,7 @@ export async function speak(
     audio.src = URL.createObjectURL(wav);
 
     currentAudio = audio;
+    audio.playbackRate = currentSpeed;
 
     // Set up event handlers
     audio.onplay = () => onStatus?.({ state: "speaking" });
@@ -110,9 +113,13 @@ export async function speak(
 
     await audio.play();
   } catch (err) {
-    console.warn("[TTS] Piper failed, falling back to Web Speech API:", err);
+    console.error("[TTS] Piper TTS failed to load or synthesize:", err);
     cleanup();
-    speakWithWebSpeech(text, onStatus);
+    onStatus?.({
+      state: "error",
+      error:
+        "Piper TTS failed to load. Please check your connection and try again.",
+    });
   }
 }
 
@@ -126,48 +133,31 @@ export function stop(): void {
       URL.revokeObjectURL(currentAudio.src);
     }
   }
-  window.speechSynthesis?.cancel();
   cleanup();
+}
+
+/**
+ * Set playback speed. Applies immediately if audio is playing.
+ */
+export function setPlaybackRate(speed: PlaybackSpeed): void {
+  currentSpeed = speed;
+  if (currentAudio) {
+    currentAudio.playbackRate = speed;
+  }
+}
+
+/**
+ * Get the current playback speed.
+ */
+export function getPlaybackRate(): PlaybackSpeed {
+  return currentSpeed;
 }
 
 /**
  * Check if TTS is currently playing audio.
  */
 export function isSpeaking(): boolean {
-  return (
-    (currentAudio !== null && !currentAudio.paused) ||
-    window.speechSynthesis?.speaking === true
-  );
-}
-
-// ─── Web Speech API Fallback ─────────────────────────────────────
-
-function speakWithWebSpeech(text: string, onStatus?: StatusCallback): void {
-  try {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    // Try to find a natural-sounding voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(
-      (v) =>
-        v.name.includes("Google") ||
-        v.name.includes("Natural") ||
-        v.name.includes("Enhanced"),
-    );
-    if (preferred) utterance.voice = preferred;
-
-    utterance.onstart = () => onStatus?.({ state: "speaking" });
-    utterance.onend = () => onStatus?.({ state: "idle" });
-    utterance.onerror = () =>
-      onStatus?.({ state: "error", error: "Web Speech failed" });
-
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    onStatus?.({ state: "error", error: "TTS not available" });
-  }
+  return currentAudio !== null && !currentAudio.paused;
 }
 
 // ─── Internal ────────────────────────────────────────────────────

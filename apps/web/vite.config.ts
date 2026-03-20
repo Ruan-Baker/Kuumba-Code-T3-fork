@@ -2,6 +2,8 @@ import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 import { defineConfig } from "vite";
 import pkg from "./package.json" with { type: "json" };
 
@@ -17,6 +19,8 @@ const buildSourcemap =
 
 export default defineConfig({
   plugins: [
+    wasm(),
+    topLevelAwait(),
     tanstackRouter(),
     react(),
     babel({
@@ -31,6 +35,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     include: ["@pierre/diffs", "@pierre/diffs/react", "@pierre/diffs/worker/worker.js"],
+    exclude: ["onnxruntime-web", "@mintplex-labs/piper-tts-web"],
   },
   define: {
     // In dev mode, tell the web app where the WebSocket server lives
