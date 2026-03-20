@@ -44,10 +44,11 @@ async function fetchDeviceInfo(device: RemoteDeviceConfig): Promise<RemoteDevice
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: device.authToken ? { Authorization: `Bearer ${device.authToken}` } : undefined,
-    });
+    const fetchOptions: RequestInit = { signal: controller.signal };
+    if (device.authToken) {
+      fetchOptions.headers = { Authorization: `Bearer ${device.authToken}` };
+    }
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }

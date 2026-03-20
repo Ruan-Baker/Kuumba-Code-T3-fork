@@ -56,11 +56,15 @@ export function installGlobalRendererDiagnostics(): void {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    logRendererDiagnostic({
+    const entry: DesktopRendererLogEntry = {
       level: "error",
       scope: "window.unhandledrejection",
       message: "Unhandled promise rejection",
-      details: normalizeErrorDetails(event.reason),
-    });
+    };
+    const details = normalizeErrorDetails(event.reason);
+    if (details !== undefined) {
+      entry.details = details;
+    }
+    logRendererDiagnostic(entry);
   });
 }

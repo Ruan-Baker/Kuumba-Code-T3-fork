@@ -33,7 +33,7 @@ export function useTTS() {
       type: "error",
       title: "Read aloud failed",
       description: status.error,
-      dismissAfterVisibleMs: 8000,
+      data: { dismissAfterVisibleMs: 8000 },
     });
   }, [status]);
 

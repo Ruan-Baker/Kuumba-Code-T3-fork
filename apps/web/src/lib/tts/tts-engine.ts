@@ -6,6 +6,7 @@
  * and cached in IndexedDB / OPFS.
  */
 import * as piperTTS from "@mintplex-labs/piper-tts-web";
+import type { DesktopRendererLogEntry } from "@t3tools/contracts";
 import { logRendererDiagnostic } from "../rendererDiagnostics";
 
 const DEFAULT_VOICE_ID = "en_US-amy-medium";
@@ -68,12 +69,9 @@ export async function preloadVoice(
     await preloadPromise;
   } catch (error) {
     resetPiperSession();
-    logRendererDiagnostic({
-      level: "warn",
-      scope: "tts.preload",
-      message: "Failed to preload Piper voice",
-      details: errorDetails(error),
-    });
+    logRendererDiagnostic(
+      buildLogEntry("warn", "tts.preload", "Failed to preload Piper voice", errorDetails(error)),
+    );
     throw new Error(describeTTSError(error));
   } finally {
     preloadPromise = null;
@@ -113,12 +111,9 @@ export async function speak(
     };
     audio.onerror = () => {
       const message = describeAudioPlaybackFailure(audio);
-      logRendererDiagnostic({
-        level: "error",
-        scope: "tts.audio",
-        message,
-        details: errorDetails(audio.error),
-      });
+      logRendererDiagnostic(
+        buildLogEntry("error", "tts.audio", message, errorDetails(audio.error)),
+      );
       cleanup();
       onStatus?.({ state: "error", error: message });
     };
@@ -127,12 +122,7 @@ export async function speak(
   } catch (error) {
     cleanup();
     const message = describeTTSError(error);
-    logRendererDiagnostic({
-      level: "error",
-      scope: "tts.speak",
-      message,
-      details: errorDetails(error),
-    });
+    logRendererDiagnostic(buildLogEntry("error", "tts.speak", message, errorDetails(error)));
     onStatus?.({ state: "error", error: message });
   }
 }
@@ -195,12 +185,14 @@ async function synthesizeSpeech(text: string, voiceId: string): Promise<Blob> {
       lastError = error;
       resetPiperSession();
       if (attempt === 0) {
-        logRendererDiagnostic({
-          level: "warn",
-          scope: "tts.session",
-          message: "Piper session initialization failed; retrying with a fresh session.",
-          details: errorDetails(error),
-        });
+        logRendererDiagnostic(
+          buildLogEntry(
+            "warn",
+            "tts.session",
+            "Piper session initialization failed; retrying with a fresh session.",
+            errorDetails(error),
+          ),
+        );
         continue;
       }
     }
@@ -269,6 +261,20 @@ function errorMessage(error: unknown): string {
     return error;
   }
   return "Unknown error";
+}
+
+/** Build a log entry, conditionally including `details` only when defined (exactOptionalPropertyTypes). */
+function buildLogEntry(
+  level: DesktopRendererLogEntry["level"],
+  scope: string,
+  message: string,
+  details: string | undefined,
+): DesktopRendererLogEntry {
+  const entry: DesktopRendererLogEntry = { level, scope, message };
+  if (details !== undefined) {
+    entry.details = details;
+  }
+  return entry;
 }
 
 function errorDetails(error: unknown): string | undefined {

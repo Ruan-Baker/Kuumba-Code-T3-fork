@@ -47,6 +47,7 @@ function makeState(thread: Thread): AppState {
     ],
     threads: [thread],
     threadsHydrated: true,
+    sidebarTab: "local",
   };
 }
 
@@ -182,6 +183,7 @@ describe("store pure functions", () => {
       ],
       threads: [],
       threadsHydrated: true,
+      sidebarTab: "local",
     };
 
     const next = reorderProjects(state, project1, project3);
@@ -251,6 +253,7 @@ describe("store read model sync", () => {
       ],
       threads: [],
       threadsHydrated: true,
+      sidebarTab: "local",
     };
     const readModel: OrchestrationReadModel = {
       snapshotSequence: 2,
