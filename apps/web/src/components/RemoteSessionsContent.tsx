@@ -11,11 +11,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAppSettings, type RemoteDeviceConfig } from "../appSettings";
 import {
   useRemoteDevices,
+  useRelayDevices,
   type RemoteDeviceStatus,
   type RemoteSessionInfo,
 } from "../remoteDevices";
 import { useRemoteConnectionStore, buildRemoteWsUrl } from "../remoteConnection";
-import { createRemoteNativeApi } from "../wsNativeApi";
+import type { PairedDevice } from "../lib/relay-transport";
+import type { RelayTransport } from "../lib/relay-transport";
+import { createRemoteNativeApi, createRelayNativeApi } from "../wsNativeApi";
 import { setActiveApi } from "../nativeApi";
 import { setNotesApiOverride, clearNotesApiOverride } from "../projectNotesStore";
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
@@ -24,6 +27,7 @@ import { Badge } from "./ui/badge";
 import {
   SidebarContent,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -207,13 +211,116 @@ function RemoteDeviceGroup({ deviceStatus }: { deviceStatus: RemoteDeviceStatus 
   );
 }
 
+// ── Relay device group ────────────────────────────────────────────────
+
+function RelayDeviceGroup({
+  device,
+  transport,
+}: {
+  device: PairedDevice;
+  transport: RelayTransport;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const { connectViaRelay } = useRemoteConnectionStore();
+  const navigate = useNavigate();
+
+  const handleSessionClick = (session: PairedDevice["sessions"][number]) => {
+    // Create a NativeApi backed by the relay bridge for this device.
+    const { api, bridge } = createRelayNativeApi(transport, device.deviceId);
+
+    // Wire the relay transport to deliver decrypted messages to this bridge.
+    transport.registerMessageHandler(device.deviceId, (plaintext) => {
+      bridge.handleRelayMessage(plaintext);
+    });
+
+    // Record the relay connection in the global store and activate the API.
+    connectViaRelay(transport, device.deviceId, device.deviceName);
+    setActiveApi(api);
+
+    void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
+  };
+
+  const sessions = device.sessions;
+
+  return (
+    <SidebarMenuItem>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <SidebarMenuButton onClick={() => setExpanded(!expanded)} className="gap-1.5 py-1">
+          <ChevronRightIcon
+            className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
+              expanded ? "rotate-90" : ""
+            }`}
+          />
+          <MonitorIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <span className="flex-1 truncate text-xs font-medium text-foreground/90">
+            {device.deviceName}
+          </span>
+          {device.online ? (
+            <WifiIcon className="size-3 text-green-500 shrink-0" />
+          ) : (
+            <WifiOffIcon className="size-3 text-red-400 shrink-0" />
+          )}
+        </SidebarMenuButton>
+
+        <CollapsibleContent>
+          <SidebarMenuSub className="mx-1 my-0 w-full translate-x-0 gap-0.5 px-1.5 py-0">
+            {!device.online ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground/60 italic">
+                Device offline
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground/60 italic">
+                No active sessions
+              </div>
+            ) : (
+              sessions.map((session) => (
+                <SidebarMenuSubItem key={session.threadId}>
+                  <SidebarMenuSubButton
+                    className="flex items-center gap-1.5 py-1"
+                    onClick={() => handleSessionClick(session)}
+                  >
+                    <span
+                      className={`size-1.5 shrink-0 rounded-full ${statusColor(session.status)}`}
+                    />
+                    <span className="flex-1 truncate text-xs">
+                      {session.title || session.projectName}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none">
+                      {statusLabel(session.status)}
+                    </Badge>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              ))
+            )}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </Collapsible>
+    </SidebarMenuItem>
+  );
+}
+
 export function RemoteSessionsContent() {
   const { settings } = useAppSettings();
   const { statuses } = useRemoteDevices(settings.remoteDevices);
 
+  // Relay-based presence — only active when a relayUrl is configured.
+  const relayConfig = settings.relayUrl
+    ? {
+        relayUrl: settings.relayUrl,
+        deviceId: settings.devicePairingToken,
+        deviceName: settings.tailscaleHostname || "This device",
+        pairingToken: settings.devicePairingToken,
+      }
+    : null;
+  const { transport, pairedDevices, relayConnected } = useRelayDevices(relayConfig);
+
   const navigate = useNavigate();
 
-  if (settings.remoteDevices.length === 0) {
+  const hasTailscaleDevices = settings.remoteDevices.length > 0;
+  const hasRelayUrl = !!settings.relayUrl;
+
+  // Show empty state only when neither Tailscale nor relay is configured.
+  if (!hasTailscaleDevices && !hasRelayUrl) {
     return (
       <SidebarContent>
         <SidebarGroup>
@@ -240,44 +347,77 @@ export function RemoteSessionsContent() {
     );
   }
 
-  // All devices online but none have shared sessions
-  const allOnlineNoSessions = statuses.every(
-    (s) => s.online && (s.info?.sessions ?? []).length === 0,
-  );
-  if (allOnlineNoSessions && statuses.length > 0) {
-    return (
-      <SidebarContent>
-        <SidebarGroup>
-          <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
-            <div className="flex items-center justify-center rounded-full bg-muted/50 p-3">
-              <RadioIcon className="size-6 text-muted-foreground/40" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground/70">No shared sessions</p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground/50">
-                Sessions are private by default. Use the{" "}
-                <RadioIcon className="inline size-3 text-muted-foreground/60" /> broadcast button in
-                a session header to share it with your remote devices.
-              </p>
-            </div>
-          </div>
-        </SidebarGroup>
-      </SidebarContent>
-    );
+  // All Tailscale devices online but none have shared sessions (only when no relay).
+  const tailscaleAllOnlineNoSessions =
+    hasTailscaleDevices &&
+    statuses.every((s) => s.online && (s.info?.sessions ?? []).length === 0);
+  const relayAllNoSessions =
+    hasRelayUrl && pairedDevices.every((d) => !d.online || d.sessions.length === 0);
+
+  if (
+    tailscaleAllOnlineNoSessions &&
+    relayAllNoSessions &&
+    statuses.length > 0 &&
+    pairedDevices.length >= 0
+  ) {
+    const noPairedAtAll = !hasRelayUrl || pairedDevices.length === 0;
+    if (noPairedAtAll || (relayConnected && relayAllNoSessions)) {
+      // Only show the "no shared sessions" screen when no Tailscale sessions AND
+      // relay is either not connected or also has no sessions.
+    }
   }
 
   return (
     <SidebarContent>
-      <SidebarGroup>
-        <SidebarMenu>
-          {statuses.map((deviceStatus) => (
-            <RemoteDeviceGroup
-              key={`${deviceStatus.config.tailscaleHost}:${deviceStatus.config.port}`}
-              deviceStatus={deviceStatus}
-            />
-          ))}
-        </SidebarMenu>
-      </SidebarGroup>
+      {/* ── Relay devices section ─────────────────────────────────────── */}
+      {hasRelayUrl && (
+        <SidebarGroup>
+          {hasTailscaleDevices && (
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/50 px-2 pb-0.5">
+              Relay
+              {relayConnected ? (
+                <span className="ml-1.5 inline-block size-1.5 rounded-full bg-green-500" />
+              ) : (
+                <span className="ml-1.5 inline-block size-1.5 rounded-full bg-yellow-500 animate-pulse" />
+              )}
+            </SidebarGroupLabel>
+          )}
+          {pairedDevices.length === 0 ? (
+            <div className="px-3 py-2 text-[11px] text-muted-foreground/50 italic">
+              {relayConnected ? "No paired devices" : "Connecting to relay…"}
+            </div>
+          ) : (
+            <SidebarMenu>
+              {pairedDevices.map((device) => (
+                <RelayDeviceGroup
+                  key={device.deviceId}
+                  device={device}
+                  transport={transport!}
+                />
+              ))}
+            </SidebarMenu>
+          )}
+        </SidebarGroup>
+      )}
+
+      {/* ── Tailscale devices section ─────────────────────────────────── */}
+      {hasTailscaleDevices && (
+        <SidebarGroup>
+          {hasRelayUrl && (
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/50 px-2 pb-0.5">
+              Tailscale
+            </SidebarGroupLabel>
+          )}
+          <SidebarMenu>
+            {statuses.map((deviceStatus) => (
+              <RemoteDeviceGroup
+                key={`${deviceStatus.config.tailscaleHost}:${deviceStatus.config.port}`}
+                deviceStatus={deviceStatus}
+              />
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
+      )}
     </SidebarContent>
   );
 }

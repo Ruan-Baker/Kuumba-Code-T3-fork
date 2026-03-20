@@ -37,6 +37,8 @@ export class RelayTransport {
   private reconnectAttempts = 0;
   private registered = false;
   private pendingSessions: RelaySessionInfo[] = [];
+  /** Per-device message handlers registered by RelayWsBridge instances. */
+  private readonly deviceMessageHandlers = new Map<string, (plaintext: string) => void>();
 
   constructor(config: RelayTransportConfig) {
     this.config = config;
@@ -107,6 +109,20 @@ export class RelayTransport {
 
   getPublicKey(): string | null {
     return this.keyPair?.publicKey ?? null;
+  }
+
+  /**
+   * Register a per-device message handler so that a RelayWsBridge can receive
+   * decrypted messages from a specific remote device.  Replaces any existing
+   * handler for that device.  Returns an unregister function.
+   */
+  registerMessageHandler(deviceId: string, handler: (plaintext: string) => void): () => void {
+    this.deviceMessageHandlers.set(deviceId, handler);
+    return () => {
+      if (this.deviceMessageHandlers.get(deviceId) === handler) {
+        this.deviceMessageHandlers.delete(deviceId);
+      }
+    };
   }
 
   getPairedDevices(): PairedDevice[] {
@@ -197,6 +213,12 @@ export class RelayTransport {
         if (!peer) break;
         try {
           const plaintext = await decrypt(peer.sharedKey, msg.encrypted);
+          // Dispatch to the per-device handler registered by a RelayWsBridge, if any.
+          const deviceHandler = this.deviceMessageHandlers.get(msg.fromDeviceId);
+          if (deviceHandler) {
+            deviceHandler(plaintext);
+          }
+          // Also call the global onMessage callback for any other consumers.
           this.config.onMessage?.(msg.fromDeviceId, msg.fromDeviceName, plaintext);
         } catch {
           // Decryption failure — ignore malformed/tampered messages
