@@ -290,7 +290,7 @@ function connectWsOnce(port: number, token?: string): Promise<WebSocket> {
     };
     channelsBySocket.set(ws, channels);
 
-    ws.on("message", (raw) => {
+    ws.on("message", (raw: unknown) => {
       const parsed = JSON.parse(String(raw));
       if (isWsPushEnvelope(parsed)) {
         enqueue(channels.push, parsed);

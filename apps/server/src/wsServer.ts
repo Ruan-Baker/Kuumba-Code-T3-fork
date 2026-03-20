@@ -578,7 +578,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const wss = new WebSocketServer({ noServer: true });
 
   const closeWebSocketServer = Effect.callback<void, ServerLifecycleError>((resume) => {
-    wss.close((error) => {
+    wss.close((error: Error | undefined) => {
       if (error && !isServerNotRunningError(error)) {
         resume(
           Effect.fail(
@@ -948,12 +948,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       }
     }
 
-    wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.handleUpgrade(request, socket, head, (ws: any) => {
       wss.emit("connection", ws, request);
     });
   });
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws: any) => {
     const segments = cwd.split(/[/\\]/).filter(Boolean);
     const projectName = segments[segments.length - 1] ?? "project";
 
@@ -974,7 +974,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       ),
     );
 
-    ws.on("message", (raw) => {
+    ws.on("message", (raw: unknown) => {
       void runPromise(handleMessage(ws, raw).pipe(Effect.ignoreCause({ log: true })));
     });
 

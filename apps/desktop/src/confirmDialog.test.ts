@@ -22,7 +22,7 @@ describe("showDesktopConfirmDialog", () => {
     const result = await showDesktopConfirmDialog("   ", null);
 
     expect(result).toBe(false);
-    expect(showMessageBoxMock).not.toHaveBeenCalled();
+    expect(showMessageBoxMock).toHaveBeenCalledTimes(0);
   });
 
   it("opens a dialog for the focused window and returns true on confirm", async () => {

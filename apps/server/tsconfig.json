@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun", "vitest"],
     "lib": ["ES2023", "esnext.disposable"],
     "noEmit": true,
     "allowImportingTsExtensions": true,

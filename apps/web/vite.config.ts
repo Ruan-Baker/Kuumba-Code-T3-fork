@@ -30,7 +30,7 @@ export default defineConfig({
       // This is causing our packages/ directory to fail to parse, as they are not relative to the CWD.
       parserOpts: { plugins: ["typescript", "jsx"] },
       presets: [reactCompilerPreset()],
-    }),
+    } as Parameters<typeof babel>[0]),
     tailwindcss(),
   ],
   optimizeDeps: {

@@ -78,7 +78,7 @@ describe("syncShellEnvironment", () => {
       readEnvironment,
     });
 
-    expect(readEnvironment).not.toHaveBeenCalled();
+    expect(readEnvironment).toHaveBeenCalledTimes(0);
     expect(env.PATH).toBe("/usr/bin");
     expect(env.SSH_AUTH_SOCK).toBe("/tmp/inherited.sock");
   });

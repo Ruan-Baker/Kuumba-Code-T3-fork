@@ -86,7 +86,7 @@ it.effect("accepts typed websocket push envelopes with sequence", () =>
     });
 
     if (!("type" in parsed) || parsed.type !== "push") {
-      assert.fail("expected websocket response to decode as a push envelope");
+      throw new Error("expected websocket response to decode as a push envelope");
     }
 
     assert.strictEqual(parsed.type, "push");
