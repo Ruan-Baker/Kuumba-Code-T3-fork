@@ -26,7 +26,7 @@ import {
   getDesktopUpdateStatusMessage,
 } from "../components/desktopUpdate.logic";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { PencilIcon, PlusIcon, TrashIcon, MonitorIcon } from "lucide-react";
+import { PencilIcon, PlusIcon, TrashIcon, MonitorIcon, CopyIcon, CheckIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import { DeviceQRCode } from "~/components/DeviceQRCode";
 import type { RemoteDeviceConfig } from "~/appSettings";
 
@@ -206,9 +206,145 @@ function RemoteDevicesSettings({
           </Button>
         )}
 
-        {/* Mobile Connection QR Code */}
+      </div>
+    </section>
+  );
+}
+
+// ── This Device Settings ──────────────────────────────────────────────
+
+const DEVICE_ID_STORAGE_KEY = "t3code:device-id";
+
+function getOrCreateDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const newId = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, newId);
+    return newId;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function ThisDeviceSettings({
+  relayUrl,
+  pairingToken,
+  publicKey,
+  pairedDevices,
+  onUpdateRelayUrl,
+}: {
+  relayUrl: string;
+  pairingToken: string;
+  publicKey: string;
+  pairedDevices: readonly import("~/appSettings").PairedDevice[];
+  onUpdateRelayUrl: (url: string) => void;
+}) {
+  const [tokenVisible, setTokenVisible] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const deviceId = getOrCreateDeviceId();
+
+  const handleCopyToken = async () => {
+    try {
+      await navigator.clipboard.writeText(pairingToken);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    } catch {
+      // fallback copy
+      const textarea = document.createElement("textarea");
+      textarea.value = pairingToken;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-medium text-foreground">This Device</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Make this machine reachable from the Kuumba Code mobile app via a relay server.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-foreground">Relay server URL</span>
+          <Input
+            value={relayUrl}
+            onChange={(e) => onUpdateRelayUrl(e.target.value)}
+            placeholder="e.g. wss://relay.example.com"
+            spellCheck={false}
+          />
+          <span className="text-[11px] text-muted-foreground">
+            The WebSocket URL of your relay server — used by the mobile app to reach this device.
+          </span>
+        </label>
+
+        <div className="space-y-1">
+          <span className="text-xs font-medium text-foreground">Device ID</span>
+          <div className="rounded-md bg-muted px-2 py-1.5">
+            <code className="text-xs font-mono text-foreground/80 break-all">{deviceId}</code>
+          </div>
+          <span className="text-[11px] text-muted-foreground">
+            Unique identifier for this device, used by the relay to route connections.
+          </span>
+        </div>
+
+        {pairingToken ? (
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-foreground">Pairing token</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 rounded-md bg-muted px-2 py-1.5 overflow-hidden">
+                <code className="text-xs font-mono text-foreground/80 truncate block">
+                  {tokenVisible ? pairingToken : "••••••••••••••••••••••••••••••••"}
+                </code>
+              </div>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => setTokenVisible((v) => !v)}
+                title={tokenVisible ? "Hide token" : "Show token"}
+                className="shrink-0"
+              >
+                {tokenVisible ? (
+                  <EyeOffIcon className="size-3.5" />
+                ) : (
+                  <EyeIcon className="size-3.5" />
+                )}
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => void handleCopyToken()}
+                title="Copy pairing token"
+                className="shrink-0"
+              >
+                {tokenCopied ? (
+                  <CheckIcon className="size-3.5 text-green-500" />
+                ) : (
+                  <CopyIcon className="size-3.5" />
+                )}
+              </Button>
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Auto-generated token included in the QR code for secure pairing.
+            </span>
+          </div>
+        ) : null}
+
         <div className="rounded-xl border border-border bg-background/50 p-4">
-          <DeviceQRCode />
+          <DeviceQRCode
+            relayUrl={relayUrl}
+            deviceId={deviceId}
+            pairingToken={pairingToken}
+            publicKey={publicKey}
+            pairedDevices={pairedDevices as import("~/appSettings").PairedDevice[]}
+          />
         </div>
       </div>
     </section>
@@ -430,7 +566,7 @@ function SettingsRouteView() {
   );
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         {isElectron && (
           <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
@@ -537,6 +673,14 @@ function SettingsRouteView() {
                 ) : null}
               </div>
             </section>
+
+            <ThisDeviceSettings
+              relayUrl={settings.relayUrl}
+              pairingToken={settings.devicePairingToken}
+              publicKey={settings.e2ePublicKey}
+              pairedDevices={settings.pairedDevices}
+              onUpdateRelayUrl={(relayUrl) => updateSettings({ relayUrl })}
+            />
 
             <RemoteDevicesSettings
               devices={settings.remoteDevices}
