@@ -1,4 +1,4 @@
 declare module "remark-gfm" {
-  const remarkGfm: unknown;
+  const remarkGfm: import("unified").Pluggable;
   export default remarkGfm;
 }
