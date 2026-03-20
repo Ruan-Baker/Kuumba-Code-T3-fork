@@ -132,6 +132,34 @@ const CliEnvConfig = Config.all({
 const resolveBooleanFlag = (flag: Option.Option<boolean>, envValue: boolean) =>
   Option.getOrElse(Option.filter(flag, Boolean), () => envValue);
 
+const readPersistedDeviceIdentity = (deviceJsonPath: string) =>
+  Effect.tryPromise({
+    try: () => import("node:fs/promises").then((fs) => fs.readFile(deviceJsonPath, "utf-8")),
+    catch: () => null,
+  }).pipe(
+    Effect.flatMap((deviceJsonRaw) =>
+      deviceJsonRaw
+        ? Effect.try({
+            try: () => JSON.parse(deviceJsonRaw) as { deviceId?: string; deviceName?: string },
+            catch: () => null,
+          })
+        : Effect.succeed(null),
+    ),
+  );
+
+const writePersistedDeviceIdentity = (
+  deviceJsonPath: string,
+  deviceId: string,
+  deviceName: string,
+) =>
+  Effect.tryPromise({
+    try: () =>
+      import("node:fs/promises").then((fs) =>
+        fs.writeFile(deviceJsonPath, JSON.stringify({ deviceId, deviceName }, null, 2)),
+      ),
+    catch: () => null,
+  }).pipe(Effect.asVoid, Effect.catch(() => Effect.void));
+
 const ServerConfigLive = (input: CliInput) =>
   Layer.effect(
     ServerConfig,
@@ -183,35 +211,14 @@ const ServerConfigLive = (input: CliInput) =>
 
       // Resolve device identity — persist to stateDir/device.json on first launch
       const deviceJsonPath = join(stateDir, "device.json");
-      let deviceId: string | undefined;
-      let resolvedDeviceName: string | undefined;
-      try {
-        const deviceJsonRaw = yield* Effect.tryPromise({
-          try: () => import("node:fs/promises").then((fs) => fs.readFile(deviceJsonPath, "utf-8")),
-          catch: () => null,
-        }).pipe(Effect.catch(() => Effect.succeed(null)));
-        if (deviceJsonRaw) {
-          const parsed = JSON.parse(deviceJsonRaw);
-          deviceId = parsed.deviceId;
-          resolvedDeviceName = parsed.deviceName;
-        }
-      } catch {
-        // Ignore parse errors
-      }
+      const persistedDeviceIdentity = yield* readPersistedDeviceIdentity(deviceJsonPath);
+      let deviceId = persistedDeviceIdentity?.deviceId;
+      let resolvedDeviceName = persistedDeviceIdentity?.deviceName;
       if (!deviceId) {
         deviceId = crypto.randomUUID();
         resolvedDeviceName =
           Option.getOrUndefined(input.deviceName) ?? env.deviceName ?? os.hostname();
-        yield* Effect.tryPromise({
-          try: () =>
-            import("node:fs/promises").then((fs) =>
-              fs.writeFile(
-                deviceJsonPath,
-                JSON.stringify({ deviceId, deviceName: resolvedDeviceName }, null, 2),
-              ),
-            ),
-          catch: () => null,
-        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+        yield* writePersistedDeviceIdentity(deviceJsonPath, deviceId, resolvedDeviceName);
       }
       // CLI/env override for device name
       const deviceName =

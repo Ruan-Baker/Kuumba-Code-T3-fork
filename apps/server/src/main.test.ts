@@ -59,7 +59,7 @@ const testLayer = Layer.mergeAll(
 const runCli = (
   args: ReadonlyArray<string>,
   env: Record<string, string> = { T3CODE_NO_BROWSER: "true" },
-) => {
+): Effect.Effect<void, unknown, never> => {
   const uniqueStateDir = `/tmp/t3-cli-state-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return Command.runWith(t3Cli, { version: "0.0.0-test" })(args).pipe(
     Effect.provide(
@@ -72,7 +72,7 @@ const runCli = (
         }),
       ),
     ),
-  );
+  ) as Effect.Effect<void, unknown, never>;
 };
 
 beforeEach(() => {
