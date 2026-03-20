@@ -34,7 +34,7 @@
     }
   },
   "scripts": {
-    "prepare": "effect-language-service patch",
+    "prepare": "effect-language-service patch || true",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
