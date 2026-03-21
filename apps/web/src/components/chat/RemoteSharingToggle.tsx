@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { RadioIcon } from "lucide-react";
 import { ensureNativeApi, isRemoteApiActive } from "../../nativeApi";
+import { useRelay } from "../../lib/useRelayConnection";
+import { useSharedThreadsStore } from "../../lib/sharedThreadsStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Toggle } from "../ui/toggle";
 
@@ -17,6 +19,8 @@ interface RemoteSharingToggleProps {
 export function RemoteSharingToggle({ threadId }: RemoteSharingToggleProps) {
   const [shared, setShared] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { refreshRelaySessions } = useRelay();
+  const setSharedInStore = useSharedThreadsStore((s) => s.setShared);
 
   // Don't show the toggle when already viewing a remote session
   const isRemote = isRemoteApiActive();
@@ -28,7 +32,10 @@ export function RemoteSharingToggle({ threadId }: RemoteSharingToggleProps) {
     const api = ensureNativeApi();
     api.sessions.getRemoteSharing({ threadId }).then(
       (result) => {
-        if (!cancelled) setShared(result.shared);
+        if (!cancelled) {
+          setShared(result.shared);
+          setSharedInStore(threadId, result.shared);
+        }
       },
       () => {
         // Silently ignore — server might not support this yet
@@ -49,6 +56,9 @@ export function RemoteSharingToggle({ threadId }: RemoteSharingToggleProps) {
         shared: !shared,
       });
       setShared(result.shared);
+      setSharedInStore(threadId, result.shared);
+      // Push updated sessions to relay so paired devices see the change
+      refreshRelaySessions();
     } catch {
       // Silently ignore errors
     } finally {

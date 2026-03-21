@@ -111,7 +111,7 @@ function ChatRouteLayout() {
   }, [navigate]);
 
   return (
-    <SidebarProvider defaultOpen>
+    <SidebarProvider defaultOpen className="!h-screen !min-h-0">
       <ChatRouteGlobalShortcuts />
       <Sidebar
         side="left"
@@ -120,7 +120,7 @@ function ChatRouteLayout() {
       >
         <ThreadSidebar />
       </Sidebar>
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <RemoteBanner />
         <Outlet />
       </div>

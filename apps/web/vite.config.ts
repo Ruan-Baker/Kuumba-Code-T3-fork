@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     include: ["@pierre/diffs", "@pierre/diffs/react", "@pierre/diffs/worker/worker.js"],
-    exclude: ["onnxruntime-web", "@mintplex-labs/piper-tts-web"],
+    exclude: ["onnxruntime-web"],
   },
   define: {
     // In dev mode, tell the web app where the WebSocket server lives
@@ -55,6 +55,10 @@ export default defineConfig({
       protocol: "ws",
       host: "localhost",
     },
+  },
+  worker: {
+    format: "es",
+    plugins: () => [wasm(), topLevelAwait()],
   },
   build: {
     outDir: "dist",

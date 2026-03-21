@@ -450,8 +450,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
               return {
                 threadId: t.id,
                 projectId: t.projectId,
-                projectName: project?.name ?? "Unknown",
-                projectCwd: project?.cwd ?? "",
+                projectName: project?.title ?? "Unknown",
+                projectCwd: project?.workspaceRoot ?? "",
                 status: t.session?.status ?? "idle",
                 title: t.title ?? "",
               };
@@ -470,6 +470,57 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
             },
             JSON.stringify(deviceInfo),
           );
+          return;
+        }
+
+        // TTS synthesis endpoint — uses Kokoro with native ONNX runtime
+        if (url.pathname === "/api/tts" && req.method === "POST") {
+          let body = "";
+          req.on("data", (chunk: Buffer) => {
+            body += chunk.toString();
+          });
+          req.on("end", () => {
+            void (async () => {
+              try {
+                const { text } = JSON.parse(body) as { text?: string };
+                if (!text || typeof text !== "string" || text.trim().length === 0) {
+                  respond(400, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }, "Missing text field");
+                  return;
+                }
+
+                const { isTTSReady, synthesize } = await import("./ttsService.js");
+                if (!isTTSReady()) {
+                  respond(503, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }, "TTS model is still loading. Try again shortly.");
+                  return;
+                }
+
+                const wavBuffer = await synthesize(text.slice(0, 5000));
+                respond(
+                  200,
+                  {
+                    "Content-Type": "audio/wav",
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Length": String(wavBuffer.byteLength),
+                  },
+                  new Uint8Array(wavBuffer),
+                );
+              } catch (err) {
+                const message = err instanceof Error ? err.message : "TTS synthesis failed";
+                console.warn("[tts] Endpoint error:", message);
+                respond(500, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }, message);
+              }
+            })();
+          });
+          return;
+        }
+
+        // CORS preflight for TTS endpoint
+        if (url.pathname === "/api/tts" && req.method === "OPTIONS") {
+          respond(204, {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          });
           return;
         }
 

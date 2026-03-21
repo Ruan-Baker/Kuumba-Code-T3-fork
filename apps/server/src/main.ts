@@ -324,6 +324,11 @@ const makeServerProgram = (input: CliInput) =>
       authEnabled: Boolean(authToken),
     });
 
+    // Initialize TTS model in the background (non-blocking)
+    import("./ttsService.js")
+      .then(({ initTTS }) => void initTTS())
+      .catch((err) => console.warn("[tts] Failed to import TTS service:", err));
+
     if (!config.noBrowser) {
       const target = config.devUrl?.toString() ?? bindUrl;
       yield* openDeps.openBrowser(target).pipe(

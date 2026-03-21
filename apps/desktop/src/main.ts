@@ -960,6 +960,7 @@ function backendEnv(): NodeJS.ProcessEnv {
     T3CODE_MODE: "desktop",
     T3CODE_NO_BROWSER: "1",
     T3CODE_PORT: String(backendPort),
+    T3CODE_HOST: "0.0.0.0",
     T3CODE_STATE_DIR: STATE_DIR,
     T3CODE_AUTH_TOKEN: backendAuthToken,
   };

@@ -26,9 +26,95 @@ import {
   getDesktopUpdateStatusMessage,
 } from "../components/desktopUpdate.logic";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { PencilIcon, PlusIcon, TrashIcon, MonitorIcon, CopyIcon, CheckIcon, EyeIcon, EyeOffIcon } from "lucide-react";
+import { PencilIcon, PlusIcon, TrashIcon, MonitorIcon, CopyIcon, CheckIcon, EyeIcon, EyeOffIcon, Download, Volume2 } from "lucide-react";
 import { DeviceQRCode } from "~/components/DeviceQRCode";
+import { isKokoroCached, deleteKokoroCache, downloadModel as downloadKokoro } from "~/lib/tts/tts-engine";
 import type { RemoteDeviceConfig } from "~/appSettings";
+import { useRelay } from "~/lib/useRelayConnection";
+
+// ── Text-to-Speech Settings ───────────────────────────────────────────
+
+function TextToSpeechSettings() {
+  const [modelReady, setModelReady] = useState(() => isKokoroCached());
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  async function handleDownload() {
+    setDownloading(true);
+    setDownloadProgress(0);
+    try {
+      await downloadKokoro((status) => {
+        if (status.state === "downloading" && status.progress != null) {
+          setDownloadProgress(status.progress);
+        }
+      });
+      setModelReady(true);
+    } catch {
+      // download failed
+    }
+    setDownloading(false);
+  }
+
+  function handleDelete() {
+    deleteKokoroCache();
+    setModelReady(false);
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-medium text-foreground">Text-to-Speech</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Read AI responses aloud using a local voice engine.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-background px-3 py-2.5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-foreground">Voice model</p>
+            <p className="text-[11px] text-muted-foreground">
+              {modelReady
+                ? "Kokoro — downloaded"
+                : downloading
+                  ? `Downloading — ${downloadProgress}%`
+                  : "Kokoro — ~90MB, downloads on first use"}
+            </p>
+          </div>
+          {modelReady ? (
+            <div className="flex items-center gap-2">
+              <div className="flex size-6 items-center justify-center rounded-full bg-green-500/10">
+                <CheckIcon className="size-3 text-green-600 dark:text-green-400" />
+              </div>
+              <button
+                onClick={handleDelete}
+                className="text-[11px] text-destructive hover:underline"
+              >
+                Delete
+              </button>
+            </div>
+          ) : downloading ? null : (
+            <button
+              onClick={() => void handleDownload()}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Download className="size-3" />
+              Download
+            </button>
+          )}
+        </div>
+        {downloading && (
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${downloadProgress}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 // ── Remote Devices Settings ───────────────────────────────────────────
 
@@ -262,10 +348,20 @@ function ThisDeviceSettings({
     }
   };
 
+  const relay = useRelay();
+
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <div className="mb-4">
-        <h2 className="text-sm font-medium text-foreground">This Device</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-foreground">This Device</h2>
+          <div className="flex items-center gap-1.5">
+            <div className={`size-2 rounded-full ${relay.connected ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+            <span className="text-[11px] text-muted-foreground">
+              {relay.connected ? "Connected to relay" : "Not connected"}
+            </span>
+          </div>
+        </div>
         <p className="mt-1 text-xs text-muted-foreground">
           Make this machine reachable from the Kuumba Code mobile app via a relay server.
         </p>
@@ -686,6 +782,8 @@ function SettingsRouteView() {
               devices={settings.remoteDevices}
               onUpdate={(remoteDevices) => updateSettings({ remoteDevices })}
             />
+
+            <TextToSpeechSettings />
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">

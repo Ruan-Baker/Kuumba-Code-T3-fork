@@ -5,6 +5,8 @@ import {
   stop,
   setPlaybackRate,
   getPlaybackRate,
+  isKokoroCached,
+  downloadModel,
   SPEED_STEPS,
   type TTSStatus,
   type PlaybackSpeed,
@@ -14,20 +16,19 @@ import { stripMarkdownForTTS } from "./markdown-stripper";
 export function useTTS() {
   const [status, setStatus] = useState<TTSStatus>({ state: "idle" });
   const [speed, setSpeed] = useState<PlaybackSpeed>(getPlaybackRate());
+  const [modelReady, setModelReady] = useState(() => isKokoroCached());
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
-      stop(); // Stop TTS when component unmounts
+      stop();
     };
   }, []);
 
   useEffect(() => {
-    if (status.state !== "error" || !status.error) {
-      return;
-    }
+    if (status.state !== "error" || !status.error) return;
 
     toastManager.add({
       type: "error",
@@ -40,6 +41,15 @@ export function useTTS() {
   const safeSetStatus = useCallback((s: TTSStatus) => {
     if (isMounted.current) setStatus(s);
   }, []);
+
+  const handleDownload = useCallback(async () => {
+    try {
+      await downloadModel(safeSetStatus);
+      if (isMounted.current) setModelReady(true);
+    } catch {
+      safeSetStatus({ state: "error", error: "Failed to download voice model." });
+    }
+  }, [safeSetStatus]);
 
   const speakText = useCallback(
     async (markdown: string) => {
@@ -60,17 +70,19 @@ export function useTTS() {
       if (status.state === "speaking" || status.state === "synthesizing") {
         stopSpeaking();
       } else {
-        // Reset error state so the user can retry
         if (status.state === "error") {
           safeSetStatus({ state: "idle" });
+        }
+        if (!modelReady) {
+          safeSetStatus({ state: "needs-download" });
+          return;
         }
         await speakText(markdown);
       }
     },
-    [status.state, speakText, stopSpeaking, safeSetStatus],
+    [status.state, modelReady, speakText, stopSpeaking, safeSetStatus],
   );
 
-  /** Cycle through 1x → 1.5x → 2x → 1x */
   const cycleSpeed = useCallback(() => {
     const currentIndex = SPEED_STEPS.indexOf(speed);
     const nextIndex = (currentIndex + 1) % SPEED_STEPS.length;
@@ -82,11 +94,14 @@ export function useTTS() {
   return {
     status,
     speed,
+    modelReady,
     isSpeaking: status.state === "speaking",
     isLoading: status.state === "downloading" || status.state === "synthesizing",
+    needsDownload: status.state === "needs-download",
     speak: speakText,
     stop: stopSpeaking,
     toggle,
     cycleSpeed,
+    downloadModel: handleDownload,
   };
 }

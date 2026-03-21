@@ -25,6 +25,8 @@ import { providerQueryKeys } from "../lib/providerReactQuery";
 import { projectQueryKeys } from "../lib/projectReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
 import { installGlobalRendererDiagnostics } from "../lib/rendererDiagnostics";
+import { useRelayConnection, RelayContext } from "../lib/useRelayConnection";
+// TTS model loading is handled by the server process — no client-side preload needed
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -55,9 +57,19 @@ function RootRouteView() {
         <EventRouter />
         <DesktopProjectBootstrap />
         <RendererDiagnostics />
-        <Outlet />
+        <RelayAutoConnect />
       </AnchoredToastProvider>
     </ToastProvider>
+  );
+}
+
+function RelayAutoConnect() {
+  const relayState = useRelayConnection();
+
+  return (
+    <RelayContext.Provider value={relayState}>
+      <Outlet />
+    </RelayContext.Provider>
   );
 }
 

@@ -37,18 +37,23 @@ export class Relay {
         return;
       }
 
+      console.log(`[relay] Received: ${msg.type} from ${registeredDeviceId ?? "unregistered"}`);
+
       switch (msg.type) {
         case "register":
           registeredDeviceId = this.handleRegister(ws, msg);
           break;
         case "forward":
           if (registeredDeviceId) this.handleForward(registeredDeviceId, msg);
+          else console.log("[relay] Rejected forward: device not registered");
           break;
         case "query-devices":
           if (registeredDeviceId) this.handleQueryDevices(registeredDeviceId);
+          else console.log("[relay] Rejected query-devices: device not registered");
           break;
         case "pair-request":
           if (registeredDeviceId) this.handlePairRequest(registeredDeviceId, msg);
+          else console.log("[relay] Rejected pair-request: device not registered — must register first");
           break;
         default:
           this.send(ws, { type: "error", message: "Unknown message type" });
@@ -74,8 +79,32 @@ export class Relay {
     }
 
     const existing = this.devices.get(msg.deviceId);
-    if (existing) {
+    if (existing && existing.ws !== ws) {
+      // A genuinely new connection replacing a stale one
       existing.ws.close(4000, "Replaced by new connection");
+    } else if (existing && existing.ws === ws) {
+      // Same connection re-registering (e.g. to update sessions) — just update in place
+      existing.deviceName = msg.deviceName;
+      existing.pairingToken = msg.pairingToken;
+      existing.publicKey = msg.publicKey;
+      existing.sessions = msg.sessions ?? [];
+      this.send(ws, { type: "register-ack", success: true });
+
+      // Notify paired devices of updated sessions
+      for (const [pairedId] of existing.pairedWith) {
+        const paired = this.devices.get(pairedId);
+        if (paired) {
+          this.send(paired.ws, {
+            type: "device-online",
+            deviceId: existing.deviceId,
+            deviceName: existing.deviceName,
+            sessions: existing.sessions,
+          });
+        }
+      }
+
+      console.log(`[relay] Device re-registered (session update): ${msg.deviceName} (${msg.deviceId.slice(0, 8)}...)`);
+      return msg.deviceId;
     }
 
     const existingPairings = existing?.pairedWith ?? new Map();

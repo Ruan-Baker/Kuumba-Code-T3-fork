@@ -83,6 +83,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { RemoteSessionsContent } from "./RemoteSessionsContent";
 import type { SidebarTab } from "../store";
+import { useSharedThreadsStore } from "../lib/sharedThreadsStore";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 6;
@@ -1070,27 +1071,27 @@ export default function Sidebar() {
   return (
     <>
       <SidebarHeader
-        className={`gap-0 px-0 py-0 ${isElectron ? "drag-region h-[52px] pl-[90px] pr-2 flex-row items-center" : "px-2 py-2"}`}
+        className={`gap-0 px-0 py-0 ${isElectron ? "drag-region h-[52px] pl-2 pr-2 flex-row items-center" : "px-2 py-2"}`}
       >
-        <div className="flex w-full">
+        <div className="mx-2 my-2 flex w-full rounded-lg bg-secondary/50 p-0.5">
           <button
             type="button"
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
               sidebarTab === "local"
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-            } ${isElectron ? "rounded-l-md" : "rounded-tl-md"}`}
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={() => setSidebarTab("local")}
           >
             Local
           </button>
           <button
             type="button"
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
               sidebarTab === "remote"
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-            } ${isElectron ? "rounded-r-md" : "rounded-tr-md"}`}
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={() => setSidebarTab("remote")}
           >
             Remote
@@ -1468,7 +1469,8 @@ export default function Sidebar() {
                                               onClick={(e) => e.stopPropagation()}
                                             />
                                           ) : (
-                                            <span className="min-w-0 flex-1 truncate text-xs">
+                                            <span className="min-w-0 flex-1 truncate text-xs flex items-center gap-1.5">
+                                              <ThreadSharedDot threadId={thread.id} />
                                               {thread.title}
                                             </span>
                                           )}
@@ -1578,5 +1580,16 @@ export default function Sidebar() {
         </SidebarMenu>
       </SidebarFooter>
     </>
+  );
+}
+
+function ThreadSharedDot({ threadId }: { threadId: string }) {
+  const isShared = useSharedThreadsStore((s) => s.sharedThreadIds.has(threadId));
+  if (!isShared) return null;
+  return (
+    <span
+      className="inline-block size-1.5 shrink-0 rounded-full bg-green-500"
+      title="Shared remotely"
+    />
   );
 }

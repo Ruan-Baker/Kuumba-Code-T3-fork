@@ -220,8 +220,8 @@ function ChatThreadRouteView() {
 
   if (!shouldUseDiffSheet) {
     return (
-      <>
-        <SidebarInset className="h-dvh  min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <SidebarInset className="min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
           <ChatView key={threadId} threadId={threadId} />
         </SidebarInset>
         <DiffPanelInlineSidebar
@@ -230,19 +230,19 @@ function ChatThreadRouteView() {
           onOpenDiff={openDiff}
           renderDiffContent={shouldRenderDiffContent}
         />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <SidebarInset className="min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
         <ChatView key={threadId} threadId={threadId} />
       </SidebarInset>
       <DiffPanelSheet diffOpen={diffOpen} onCloseDiff={closeDiff}>
         {shouldRenderDiffContent ? <LazyDiffPanel mode="sheet" /> : null}
       </DiffPanelSheet>
-    </>
+    </div>
   );
 }
 

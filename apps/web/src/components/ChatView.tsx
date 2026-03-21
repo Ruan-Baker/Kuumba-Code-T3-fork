@@ -3874,10 +3874,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   : "Default mode — click to enter plan mode"
                               }
                             >
-                              <BotIcon />
-                              <span className="sr-only sm:not-sr-only">
-                                {interactionMode === "plan" ? "Plan" : "Chat"}
-                              </span>
+                              {interactionMode === "plan" ? "Plan" : "Chat"}
                             </Button>
 
                             <Separator
@@ -3903,10 +3900,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   : "Approval required — click for full access"
                               }
                             >
-                              {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                              <span className="sr-only sm:not-sr-only">
-                                {runtimeMode === "full-access" ? "Full access" : "Supervised"}
-                              </span>
+                              {runtimeMode === "full-access" ? "Full access" : "Supervised"}
                             </Button>
 
                             {activePlan || sidebarProposedPlan || planSidebarOpen ? (

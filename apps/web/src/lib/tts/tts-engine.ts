@@ -1,30 +1,19 @@
 /**
- * TTS Engine using Piper TTS via WASM.
+ * TTS Engine — calls the server's POST /api/tts endpoint.
  *
- * Uses @mintplex-labs/piper-tts-web which runs Piper voice models
- * entirely in the browser. Models are downloaded once on first use
- * and cached in IndexedDB / OPFS.
+ * The server runs Kokoro with native ONNX runtime, so synthesis is
+ * fast and the UI thread is never blocked. Text is split into chunks
+ * and played progressively.
  */
-import * as piperTTS from "@mintplex-labs/piper-tts-web";
 import type { DesktopRendererLogEntry } from "@t3tools/contracts";
 import { logRendererDiagnostic } from "../rendererDiagnostics";
 
-const DEFAULT_VOICE_ID = "en_US-amy-medium";
-const ONNX_RUNTIME_VERSION = "1.24.3";
-const ONNX_WASM_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ONNX_RUNTIME_VERSION}/dist/`;
-const PIPER_WASM_PATHS = {
-  ...piperTTS.TtsSession.WASM_LOCATIONS,
-  onnxWasm: ONNX_WASM_BASE,
-};
-
-export const SPEED_STEPS = [1, 1.5, 2] as const;
+export const SPEED_STEPS = [0.85, 1, 1.25, 1.5, 2] as const;
 export type PlaybackSpeed = (typeof SPEED_STEPS)[number];
 
 let currentAudio: HTMLAudioElement | null = null;
-const readyVoiceIds = new Set<string>();
-let currentSpeed: PlaybackSpeed = 1;
-let preloadPromise: Promise<void> | null = null;
-let preloadVoiceId: string | null = null;
+let currentSpeed: PlaybackSpeed = 0.85;
+let stopRequested = false;
 
 type StatusCallback = (status: TTSStatus) => void;
 
@@ -34,92 +23,79 @@ export interface TTSStatus {
   error?: string;
 }
 
-export async function preloadVoice(
-  voiceId: string = DEFAULT_VOICE_ID,
-  onProgress?: (percent: number) => void,
-): Promise<void> {
-  validatePiperSupport();
+// ── Public API ───────────────────────────────────────────────────────
 
-  if (readyVoiceIds.has(voiceId)) {
-    return;
-  }
-
-  if (preloadPromise && preloadVoiceId === voiceId) {
-    await preloadPromise;
-    return;
-  }
-
-  try {
-    preloadVoiceId = voiceId;
-    preloadPromise = (async () => {
-      const stored = await piperTTS.stored();
-      if (stored.includes(voiceId)) {
-        readyVoiceIds.add(voiceId);
-        return;
-      }
-
-      await piperTTS.download(voiceId, (progress) => {
-        const percent = Math.round((progress.loaded * 100) / progress.total);
-        onProgress?.(percent);
-      });
-
-      readyVoiceIds.add(voiceId);
-    })();
-
-    await preloadPromise;
-  } catch (error) {
-    resetPiperSession();
-    logRendererDiagnostic(
-      buildLogEntry("warn", "tts.preload", "Failed to preload Piper voice", errorDetails(error)),
-    );
-    throw new Error(describeTTSError(error));
-  } finally {
-    preloadPromise = null;
-    preloadVoiceId = null;
-  }
+/** No-op — model is managed by the server. Kept for API compat. */
+export function isKokoroCached(): boolean {
+  return true; // Server handles model loading
 }
+export function deleteKokoroCache(): void {}
+export async function downloadModel(_onStatus?: StatusCallback): Promise<void> {}
+export function preloadModelInBackground(): void {}
 
+/**
+ * Speak text by sending chunks to the server for synthesis.
+ * Playback starts as soon as the first chunk is ready.
+ */
 export async function speak(
   text: string,
   onStatus?: StatusCallback,
-  voiceId: string = DEFAULT_VOICE_ID,
 ): Promise<void> {
   stop();
+  stopRequested = false;
 
   if (!text.trim()) return;
 
   try {
-    onStatus?.({ state: "downloading" });
-
-    await preloadVoice(voiceId, (percent) => {
-      onStatus?.({ state: "downloading", progress: percent });
-    });
-
     onStatus?.({ state: "synthesizing" });
-    const wav = await synthesizeSpeech(text, voiceId);
 
-    const audio = new Audio();
-    audio.src = URL.createObjectURL(wav);
+    const chunks = splitIntoChunks(text);
+    if (chunks.length === 0) return;
 
-    currentAudio = audio;
-    audio.playbackRate = currentSpeed;
+    // Synthesise chunks progressively via server
+    const wavCache: Blob[] = [];
+    let fetchIndex = 0;
+    let fetchDone = false;
+    let fetchError: Error | null = null;
 
-    audio.onplay = () => onStatus?.({ state: "speaking" });
-    audio.onended = () => {
-      cleanup();
+    const fetchNext = async () => {
+      while (fetchIndex < chunks.length && !stopRequested) {
+        const idx = fetchIndex++;
+        try {
+          const wav = await synthesizeOnServer(chunks[idx]!);
+          if (stopRequested) return;
+          wavCache.push(wav);
+        } catch (err) {
+          fetchError = err instanceof Error ? err : new Error(String(err));
+          return;
+        }
+      }
+      fetchDone = true;
+    };
+
+    const fetchPromise = fetchNext();
+
+    // Play chunks as they arrive
+    let playIndex = 0;
+    while (!stopRequested) {
+      while (wavCache.length <= playIndex && !fetchDone && !fetchError && !stopRequested) {
+        await sleep(30);
+      }
+      if (stopRequested) break;
+      if (fetchError) throw fetchError;
+      if (playIndex >= wavCache.length) break;
+
+      await playAudioBlob(wavCache[playIndex]!, onStatus);
+      playIndex++;
+    }
+
+    await fetchPromise;
+
+    if (!stopRequested) {
       onStatus?.({ state: "idle" });
-    };
-    audio.onerror = () => {
-      const message = describeAudioPlaybackFailure(audio);
-      logRendererDiagnostic(
-        buildLogEntry("error", "tts.audio", message, errorDetails(audio.error)),
-      );
-      cleanup();
-      onStatus?.({ state: "error", error: message });
-    };
-
-    await audio.play();
+    }
   } catch (error) {
+    if (stopRequested) return;
     cleanup();
     const message = describeTTSError(error);
     logRendererDiagnostic(buildLogEntry("error", "tts.speak", message, errorDetails(error)));
@@ -128,6 +104,7 @@ export async function speak(
 }
 
 export function stop(): void {
+  stopRequested = true;
   if (currentAudio) {
     currentAudio.pause();
     if (currentAudio.src) {
@@ -152,6 +129,8 @@ export function isSpeaking(): boolean {
   return currentAudio !== null && !currentAudio.paused;
 }
 
+// ── Internals ────────────────────────────────────────────────────────
+
 function cleanup(): void {
   if (currentAudio?.src) {
     URL.revokeObjectURL(currentAudio.src);
@@ -159,111 +138,132 @@ function cleanup(): void {
   currentAudio = null;
 }
 
-function validatePiperSupport(): void {
-  if (typeof navigator === "undefined" || navigator.storage === undefined) {
-    throw new Error("Browser storage is unavailable. Piper requires a secure browser context.");
-  }
-
-  if (typeof navigator.storage.getDirectory !== "function") {
-    throw new Error(
-      "This browser build does not support the storage API Piper needs for voice models.",
-    );
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-async function synthesizeSpeech(text: string, voiceId: string): Promise<Blob> {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+function resolveServerOrigin(): string {
+  if (typeof window === "undefined") return "";
+  const bridgeWsUrl = window.desktopBridge?.getWsUrl?.();
+  if (typeof bridgeWsUrl === "string" && bridgeWsUrl.length > 0) {
     try {
-      const session = await piperTTS.TtsSession.create({
-        voiceId,
-        wasmPaths: PIPER_WASM_PATHS,
-      });
-      return await session.predict(text);
-    } catch (error) {
-      lastError = error;
-      resetPiperSession();
-      if (attempt === 0) {
-        logRendererDiagnostic(
-          buildLogEntry(
-            "warn",
-            "tts.session",
-            "Piper session initialization failed; retrying with a fresh session.",
-            errorDetails(error),
-          ),
-        );
-        continue;
-      }
+      const url = new URL(bridgeWsUrl);
+      const protocol = url.protocol === "wss:" ? "https:" : "http:";
+      return `${protocol}//${url.host}`;
+    } catch {
+      // fall through
     }
   }
-
-  throw lastError;
+  return window.location.origin;
 }
 
-function resetPiperSession(): void {
-  piperTTS.TtsSession._instance = null;
+async function synthesizeOnServer(text: string): Promise<Blob> {
+  const origin = resolveServerOrigin();
+  const res = await fetch(`${origin}/api/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  if (res.status === 503) {
+    throw new Error("Voice model is still loading. Try again in a few seconds.");
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`TTS server error (${res.status}): ${body || "synthesis failed"}`);
+  }
+
+  return res.blob();
 }
+
+function playAudioBlob(wav: Blob, onStatus?: StatusCallback): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (stopRequested) {
+      resolve();
+      return;
+    }
+
+    const audio = new Audio();
+    audio.src = URL.createObjectURL(wav);
+    currentAudio = audio;
+    audio.playbackRate = currentSpeed;
+
+    audio.onplay = () => onStatus?.({ state: "speaking" });
+    audio.onended = () => {
+      URL.revokeObjectURL(audio.src);
+      currentAudio = null;
+      resolve();
+    };
+    audio.onerror = () => {
+      const message = describeAudioPlaybackFailure(audio);
+      logRendererDiagnostic(
+        buildLogEntry("error", "tts.audio", message, errorDetails(audio.error)),
+      );
+      URL.revokeObjectURL(audio.src);
+      currentAudio = null;
+      reject(new Error(message));
+    };
+
+    audio.play().catch(reject);
+  });
+}
+
+function splitIntoChunks(text: string): string[] {
+  const raw = text.split(/(?<=[.!?])\s+/);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const segment of raw) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+
+    if (current.length + trimmed.length < 250) {
+      current = current ? `${current} ${trimmed}` : trimmed;
+    } else {
+      if (current) chunks.push(current);
+      current = trimmed;
+    }
+  }
+  if (current) chunks.push(current);
+
+  return chunks;
+}
+
+// ── Error helpers ────────────────────────────────────────────────────
 
 function describeTTSError(error: unknown): string {
   const message = errorMessage(error);
   const normalized = message.toLowerCase();
 
-  if (
-    normalized.includes("failed to fetch") ||
-    normalized.includes("networkerror") ||
-    normalized.includes("load failed")
-  ) {
-    return "Piper could not download its voice or runtime files. Check your connection and firewall.";
+  if (normalized.includes("failed to fetch") || normalized.includes("networkerror")) {
+    return "Could not reach the TTS server. Is the app backend running?";
   }
-
-  if (
-    normalized.includes("wasm") ||
-    normalized.includes("onnx") ||
-    normalized.includes("backend") ||
-    normalized.includes("pthread")
-  ) {
-    return "Piper failed to initialize its speech runtime in this app build.";
+  if (normalized.includes("still loading")) {
+    return message;
   }
-
-  if (normalized.includes("storage")) {
-    return "Piper could not access browser storage for its voice model cache.";
-  }
-
-  return message || "Piper TTS failed to load.";
+  return message || "Text-to-speech failed.";
 }
 
 function describeAudioPlaybackFailure(audio: HTMLAudioElement): string {
   const mediaError = audio.error;
-  if (!mediaError) {
-    return "Audio playback failed.";
-  }
-
+  if (!mediaError) return "Audio playback failed.";
   switch (mediaError.code) {
     case MediaError.MEDIA_ERR_ABORTED:
       return "Audio playback was interrupted.";
-    case MediaError.MEDIA_ERR_NETWORK:
-      return "Audio playback failed because the generated audio could not be read.";
     case MediaError.MEDIA_ERR_DECODE:
-      return "Audio playback failed because the generated Piper audio could not be decoded.";
-    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-      return "Audio playback failed because this app build rejected the generated Piper audio.";
+      return "Audio could not be decoded.";
     default:
       return "Audio playback failed.";
   }
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  if (typeof error === "string") return error;
   return "Unknown error";
 }
 
-/** Build a log entry, conditionally including `details` only when defined (exactOptionalPropertyTypes). */
 function buildLogEntry(
   level: DesktopRendererLogEntry["level"],
   scope: string,
@@ -271,19 +271,13 @@ function buildLogEntry(
   details: string | undefined,
 ): DesktopRendererLogEntry {
   const entry: DesktopRendererLogEntry = { level, scope, message };
-  if (details !== undefined) {
-    entry.details = details;
-  }
+  if (details !== undefined) entry.details = details;
   return entry;
 }
 
 function errorDetails(error: unknown): string | undefined {
-  if (error instanceof Error) {
-    return error.stack ?? error.message;
-  }
-  if (error === undefined) {
-    return undefined;
-  }
+  if (error instanceof Error) return error.stack ?? error.message;
+  if (error === undefined) return undefined;
   try {
     return JSON.stringify(error, null, 2);
   } catch {

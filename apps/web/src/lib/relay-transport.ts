@@ -18,6 +18,8 @@ export interface RelayTransportConfig {
   deviceId: string;
   deviceName: string;
   pairingToken: string;
+  /** Pre-existing E2E key pair (from appSettings). If not provided, a new one is generated. */
+  existingKeyPair?: E2EKeyPair;
   onMessage?: (fromDeviceId: string, fromDeviceName: string, message: string) => void;
   onPairedDevicesChanged?: (devices: PairedDevice[]) => void;
   onConnected?: () => void;
@@ -48,7 +50,8 @@ export class RelayTransport {
 
   async connect(): Promise<void> {
     if (this.disposed) return;
-    this.keyPair = await generateKeyPair();
+    // Use existing key pair from appSettings (matches QR code) or generate a new one
+    this.keyPair = this.config.existingKeyPair ?? (await generateKeyPair());
     this._openSocket();
   }
 
@@ -94,12 +97,18 @@ export class RelayTransport {
     this._send(msg);
   }
 
+  private _updateSessionsTimer: ReturnType<typeof setTimeout> | null = null;
+
   updateSessions(sessions: RelaySessionInfo[]): void {
     this.pendingSessions = sessions;
-    // If already connected and registered, re-register with updated sessions
-    if (this.registered && this.ws?.readyState === WebSocket.OPEN && this.keyPair) {
-      this._register();
-    }
+    // Debounce re-registration to avoid spamming device-online events
+    if (this._updateSessionsTimer) clearTimeout(this._updateSessionsTimer);
+    this._updateSessionsTimer = setTimeout(() => {
+      this._updateSessionsTimer = null;
+      if (this.registered && this.ws?.readyState === WebSocket.OPEN && this.keyPair) {
+        this._register();
+      }
+    }, 2000);
   }
 
   queryDevices(): void {

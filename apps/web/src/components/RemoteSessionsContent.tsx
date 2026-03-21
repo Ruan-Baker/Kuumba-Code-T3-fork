@@ -282,10 +282,15 @@ function RelayDeviceGroup({
                     <span
                       className={`size-1.5 shrink-0 rounded-full ${statusColor(session.status)}`}
                     />
-                    <span className="flex-1 truncate text-xs">
-                      {session.title || session.projectName}
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-xs">
+                        {session.title || "Untitled"}
+                      </span>
+                      <span className="truncate text-[10px] text-muted-foreground/60">
+                        {session.projectName}
+                      </span>
                     </span>
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none">
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none shrink-0">
                       {statusLabel(session.status)}
                     </Badge>
                   </SidebarMenuSubButton>

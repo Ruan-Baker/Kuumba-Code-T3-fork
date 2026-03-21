@@ -78,7 +78,11 @@ export function ProjectNotesPopover({ projectCwd, projectName }: ProjectNotesPop
             <PopoverTrigger
               render={
                 <SidebarMenuAction
-                  render={<button type="button" aria-label={`Notes for ${projectName}`} />}
+                  render={
+                    <button type="button" aria-label={`Notes for ${projectName}`}>
+                      <StickyNoteIcon className="size-3.5" />
+                    </button>
+                  }
                   showOnHover
                   className="top-1 right-6 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
                 />
