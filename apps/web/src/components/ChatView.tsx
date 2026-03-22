@@ -1680,7 +1680,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (data.runtimeMode !== undefined) {
         void handleRuntimeModeChange(data.runtimeMode as "full-access" | "approval-required");
       }
-      if (data.model !== undefined) {
+      if (data.model !== undefined && typeof data.model === "string") {
         setComposerDraftModel(threadId, data.model);
       }
       if (data.reasoningLevel !== undefined) {

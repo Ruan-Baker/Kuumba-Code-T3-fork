@@ -7,6 +7,7 @@
 
 // Force ONNX runtime to use single thread (no SharedArrayBuffer needed)
 // This must be set BEFORE importing kokoro-js
+// @ts-expect-error — onnxruntime-web types may not be installed in all environments
 import { env } from "onnxruntime-web";
 env.wasm.numThreads = 1;
 

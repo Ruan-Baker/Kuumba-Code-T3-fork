@@ -18,7 +18,7 @@ let stopRequested = false;
 type StatusCallback = (status: TTSStatus) => void;
 
 export interface TTSStatus {
-  state: "idle" | "downloading" | "synthesizing" | "speaking" | "error";
+  state: "idle" | "downloading" | "synthesizing" | "speaking" | "error" | "needs-download";
   progress?: number;
   error?: string;
 }

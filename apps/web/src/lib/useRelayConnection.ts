@@ -349,18 +349,14 @@ export function useRelayConnection(): RelayConnectionState {
       // Get the local server WebSocket URL for the inbound bridge
       const localWsUrl = resolveLocalServerWsUrl();
 
-      // Use the key pair from appSettings so it matches the QR code
-      const existingKeyPair =
-        e2ePublicKey && e2ePrivateKey
-          ? { publicKey: e2ePublicKey, privateKey: e2ePrivateKey }
-          : undefined;
-
       const transport = new RelayTransport({
         relayUrl,
         deviceId,
         deviceName,
         pairingToken,
-        existingKeyPair,
+        ...(e2ePublicKey && e2ePrivateKey
+          ? { existingKeyPair: { publicKey: e2ePublicKey, privateKey: e2ePrivateKey } }
+          : {}),
         onConnected: () => {
           console.log("[relay] Connected to relay server");
           setConnected(true);
