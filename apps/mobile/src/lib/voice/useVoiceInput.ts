@@ -28,7 +28,8 @@ export function useVoiceInput(projectContext?: string | undefined) {
   const getAnalyser = useCallback(() => analyserRef.current, []);
 
   const startRecording = useCallback(async () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setState({ phase: "error", message: "Speech recognition not supported in this browser" });
       return;

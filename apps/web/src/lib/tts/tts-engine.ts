@@ -37,10 +37,7 @@ export function preloadModelInBackground(): void {}
  * Speak text by sending chunks to the server for synthesis.
  * Playback starts as soon as the first chunk is ready.
  */
-export async function speak(
-  text: string,
-  onStatus?: StatusCallback,
-): Promise<void> {
+export async function speak(text: string, onStatus?: StatusCallback): Promise<void> {
   stop();
   stopRequested = false;
 

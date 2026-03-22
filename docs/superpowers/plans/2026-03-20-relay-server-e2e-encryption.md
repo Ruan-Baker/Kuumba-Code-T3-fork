@@ -31,28 +31,28 @@
 
 ### New Files
 
-| File | Responsibility |
-|------|---------------|
-| `apps/relay/package.json` | Relay server package config |
-| `apps/relay/src/index.ts` | Entry point — starts HTTP + WebSocket server |
-| `apps/relay/src/relay.ts` | Core relay logic — device registry, message routing |
-| `apps/relay/src/types.ts` | Relay protocol message types |
-| `apps/relay/tsconfig.json` | TypeScript config |
-| `packages/shared/src/e2e-crypto.ts` | E2E encryption: ECDH key exchange + AES-256-GCM encrypt/decrypt |
+| File                                  | Responsibility                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------------- |
+| `apps/relay/package.json`             | Relay server package config                                                       |
+| `apps/relay/src/index.ts`             | Entry point — starts HTTP + WebSocket server                                      |
+| `apps/relay/src/relay.ts`             | Core relay logic — device registry, message routing                               |
+| `apps/relay/src/types.ts`             | Relay protocol message types                                                      |
+| `apps/relay/tsconfig.json`            | TypeScript config                                                                 |
+| `packages/shared/src/e2e-crypto.ts`   | E2E encryption: ECDH key exchange + AES-256-GCM encrypt/decrypt                   |
 | `apps/web/src/lib/relay-transport.ts` | Client-side relay WebSocket wrapper (connects to relay, routes to correct device) |
 
 ### Modified Files
 
-| File | Changes |
-|------|---------|
-| `apps/web/src/appSettings.ts` | Replace `tailscaleHostname` with `relayUrl`, add `pairedDevices` array with E2E keys |
-| `apps/web/src/components/DeviceQRCode.tsx` | Generate QR with relay URL + device ID + pairing token + public key |
-| `apps/web/src/routes/_chat.settings.tsx` | Replace "This Device" Tailscale section with relay status + QR code; update Remote Devices to use relay |
-| `apps/web/src/remoteDevices.ts` | Replace HTTP polling with relay-based device presence queries |
-| `apps/web/src/remoteConnection.ts` | Connect through relay instead of direct WebSocket |
-| `apps/web/src/components/RemoteSessionsContent.tsx` | Update to work with relay-based connections |
-| `packages/contracts/src/ipc.ts` | Add relay-related types to NativeApi if needed |
-| `package.json` (root) | Add `apps/relay` to workspaces |
+| File                                                | Changes                                                                                                 |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/appSettings.ts`                       | Replace `tailscaleHostname` with `relayUrl`, add `pairedDevices` array with E2E keys                    |
+| `apps/web/src/components/DeviceQRCode.tsx`          | Generate QR with relay URL + device ID + pairing token + public key                                     |
+| `apps/web/src/routes/_chat.settings.tsx`            | Replace "This Device" Tailscale section with relay status + QR code; update Remote Devices to use relay |
+| `apps/web/src/remoteDevices.ts`                     | Replace HTTP polling with relay-based device presence queries                                           |
+| `apps/web/src/remoteConnection.ts`                  | Connect through relay instead of direct WebSocket                                                       |
+| `apps/web/src/components/RemoteSessionsContent.tsx` | Update to work with relay-based connections                                                             |
+| `packages/contracts/src/ipc.ts`                     | Add relay-related types to NativeApi if needed                                                          |
+| `package.json` (root)                               | Add `apps/relay` to workspaces                                                                          |
 
 ---
 
@@ -63,6 +63,7 @@
 Create the shared encryption module that both relay clients and the relay server reference. Uses Web Crypto API (available in browser, Node 20+, Bun).
 
 **Files:**
+
 - Create: `packages/shared/src/e2e-crypto.ts`
 
 - [ ] **Step 1: Create the crypto module**
@@ -85,24 +86,22 @@ const KEY_LENGTH = 256;
 const IV_LENGTH = 12; // 96 bits for AES-GCM
 
 export interface E2EKeyPair {
-  publicKey: string;   // base64-encoded raw public key
-  privateKey: string;  // base64-encoded PKCS8 private key
+  publicKey: string; // base64-encoded raw public key
+  privateKey: string; // base64-encoded PKCS8 private key
 }
 
 export interface EncryptedEnvelope {
-  iv: string;    // base64 initialization vector
-  data: string;  // base64 ciphertext
+  iv: string; // base64 initialization vector
+  data: string; // base64 ciphertext
 }
 
 // Use globalThis.crypto which works in browser, Node 20+, and Bun
 const cryptoImpl = globalThis.crypto;
 
 export async function generateKeyPair(): Promise<E2EKeyPair> {
-  const keyPair = await cryptoImpl.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveKey"],
-  );
+  const keyPair = await cryptoImpl.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveKey",
+  ]);
 
   const publicKeyRaw = await cryptoImpl.subtle.exportKey("raw", keyPair.publicKey);
   const privateKeyPkcs8 = await cryptoImpl.subtle.exportKey("pkcs8", keyPair.privateKey);
@@ -142,18 +141,11 @@ export async function deriveSharedKey(
   );
 }
 
-export async function encrypt(
-  sharedKey: CryptoKey,
-  plaintext: string,
-): Promise<EncryptedEnvelope> {
+export async function encrypt(sharedKey: CryptoKey, plaintext: string): Promise<EncryptedEnvelope> {
   const iv = cryptoImpl.getRandomValues(new Uint8Array(IV_LENGTH));
   const encoded = new TextEncoder().encode(plaintext);
 
-  const ciphertext = await cryptoImpl.subtle.encrypt(
-    { name: ALGO, iv },
-    sharedKey,
-    encoded,
-  );
+  const ciphertext = await cryptoImpl.subtle.encrypt({ name: ALGO, iv }, sharedKey, encoded);
 
   return {
     iv: bufferToBase64(iv.buffer),
@@ -161,18 +153,11 @@ export async function encrypt(
   };
 }
 
-export async function decrypt(
-  sharedKey: CryptoKey,
-  envelope: EncryptedEnvelope,
-): Promise<string> {
+export async function decrypt(sharedKey: CryptoKey, envelope: EncryptedEnvelope): Promise<string> {
   const iv = base64ToBuffer(envelope.iv);
   const ciphertext = base64ToBuffer(envelope.data);
 
-  const plaintext = await cryptoImpl.subtle.decrypt(
-    { name: ALGO, iv },
-    sharedKey,
-    ciphertext,
-  );
+  const plaintext = await cryptoImpl.subtle.decrypt({ name: ALGO, iv }, sharedKey, ciphertext);
 
   return new TextDecoder().decode(plaintext);
 }
@@ -195,6 +180,7 @@ function base64ToBuffer(base64: string): ArrayBuffer {
 - [ ] **Step 2: Export from shared package**
 
 Add to `packages/shared/src/index.ts`:
+
 ```typescript
 export * as E2ECrypto from "./e2e-crypto.js";
 ```
@@ -215,6 +201,7 @@ git commit -m "feat: add E2E crypto module (ECDH + AES-256-GCM)"
 Define the message types for communication between devices and the relay server.
 
 **Files:**
+
 - Create: `apps/relay/src/types.ts`
 
 - [ ] **Step 1: Define relay protocol messages**
@@ -353,6 +340,7 @@ git commit -m "feat: define relay protocol message types"
 Build the relay server — a lightweight WebSocket server that registers devices, validates pairing tokens, and forwards encrypted messages.
 
 **Files:**
+
 - Create: `apps/relay/package.json`
 - Create: `apps/relay/tsconfig.json`
 - Create: `apps/relay/src/relay.ts`
@@ -406,11 +394,7 @@ Build the relay server — a lightweight WebSocket server that registers devices
 ```typescript
 // apps/relay/src/relay.ts
 import { WebSocket } from "ws";
-import type {
-  ClientToRelayMessage,
-  RelayToClientMessage,
-  RelaySessionInfo,
-} from "./types.js";
+import type { ClientToRelayMessage, RelayToClientMessage, RelaySessionInfo } from "./types.js";
 
 interface RegisteredDevice {
   deviceId: string;
@@ -568,17 +552,15 @@ export class Relay {
     const device = this.devices.get(deviceId);
     if (!device) return;
 
-    const devices = Array.from(device.pairedWith.entries()).map(
-      ([pairedId, info]) => {
-        const paired = this.devices.get(pairedId);
-        return {
-          deviceId: pairedId,
-          deviceName: info.deviceName,
-          online: paired !== undefined,
-          sessions: paired?.sessions ?? [],
-        };
-      },
-    );
+    const devices = Array.from(device.pairedWith.entries()).map(([pairedId, info]) => {
+      const paired = this.devices.get(pairedId);
+      return {
+        deviceId: pairedId,
+        deviceName: info.deviceName,
+        online: paired !== undefined,
+        sessions: paired?.sessions ?? [],
+      };
+    });
 
     this.send(device.ws, { type: "device-list", devices });
   }
@@ -636,9 +618,7 @@ export class Relay {
       publicKey: msg.publicKey,
     });
 
-    console.log(
-      `[relay] Paired: ${requester.deviceName} <-> ${target.deviceName}`,
-    );
+    console.log(`[relay] Paired: ${requester.deviceName} <-> ${target.deviceName}`);
   }
 
   private handleDisconnect(deviceId: string): void {
@@ -734,6 +714,7 @@ httpServer.listen(PORT, () => {
 In root `package.json`, add `"apps/relay"` to the `workspaces` array.
 
 Add convenience scripts:
+
 ```json
 "dev:relay": "cd apps/relay && node --watch src/index.ts",
 "start:relay": "cd apps/relay && node src/index.ts"
@@ -761,11 +742,13 @@ git commit -m "feat: add relay server for cross-network device connections"
 Create a client-side WebSocket wrapper that connects to the relay server, handles registration, pairing, and message forwarding with E2E encryption.
 
 **Files:**
+
 - Create: `apps/web/src/lib/relay-transport.ts`
 
 - [ ] **Step 1: Create relay transport**
 
 This module wraps the relay WebSocket and provides:
+
 - `register()` — register this device with the relay
 - `pair()` — pair with another device using their QR code data
 - `sendToDevice()` — send an encrypted message to a paired device
@@ -875,10 +858,7 @@ export class RelayTransport {
     });
 
     // Derive shared key from their public key
-    const sharedKey = await deriveSharedKey(
-      this.keyPair.privateKey,
-      targetPublicKey,
-    );
+    const sharedKey = await deriveSharedKey(this.keyPair.privateKey, targetPublicKey);
     const info = this.pairedDevices.get(targetDeviceId)!;
     info.sharedKey = sharedKey;
 
@@ -971,10 +951,7 @@ export class RelayTransport {
 
         // Derive shared key if we don't have one
         if (!device.sharedKey && this.keyPair) {
-          device.sharedKey = await deriveSharedKey(
-            this.keyPair.privateKey,
-            msg.publicKey,
-          );
+          device.sharedKey = await deriveSharedKey(this.keyPair.privateKey, msg.publicKey);
         }
 
         this.options.onPairAccepted?.(msg.deviceId, msg.deviceName);
@@ -1065,6 +1042,7 @@ git commit -m "feat: add relay transport client with E2E encryption"
 Replace Tailscale config with relay-based config. Store paired devices with their E2E public keys locally.
 
 **Files:**
+
 - Modify: `apps/web/src/appSettings.ts`
 
 - [ ] **Step 1: Update schema**
@@ -1084,7 +1062,7 @@ export type PairedDevice = typeof PairedDeviceSchema.Type;
 // Update RemoteDeviceConfigSchema — keep for backwards compat but add relay fields
 export const RemoteDeviceConfigSchema = Schema.Struct({
   name: Schema.String,
-  tailscaleHost: Schema.String,  // keep for legacy
+  tailscaleHost: Schema.String, // keep for legacy
   port: Schema.Number,
   authToken: Schema.String,
 });
@@ -1111,12 +1089,14 @@ git commit -m "feat: add relay and E2E key fields to app settings"
 Replace the "This Device" Tailscale section with relay-based QR code and paired devices list.
 
 **Files:**
+
 - Modify: `apps/web/src/routes/_chat.settings.tsx`
 - Modify: `apps/web/src/components/DeviceQRCode.tsx`
 
 - [ ] **Step 1: Update ThisDeviceSettings**
 
 Replace Tailscale hostname input with:
+
 - Auto-generated device ID and pairing token (shown for reference)
 - QR code that encodes: `{ relayUrl, deviceId, pairingToken, publicKey }`
 - List of paired devices with online/offline status
@@ -1140,6 +1120,7 @@ git commit -m "feat: update settings UI for relay-based pairing"
 Replace HTTP polling with relay-based device presence.
 
 **Files:**
+
 - Modify: `apps/web/src/remoteDevices.ts`
 - Modify: `apps/web/src/remoteConnection.ts`
 - Modify: `apps/web/src/components/RemoteSessionsContent.tsx`
@@ -1170,12 +1151,14 @@ git commit -m "feat: switch remote device discovery to relay"
 The existing codebase uses `WsTransport` for all RPC and push messages. We need to bridge the relay transport so that messages forwarded through the relay are processed exactly like direct WebSocket messages.
 
 **Files:**
+
 - Modify: `apps/web/src/wsNativeApi.ts` — add `createRelayNativeApi()` that uses relay transport
 - Modify: `apps/web/src/wsTransport.ts` — optionally accept a relay message handler
 
 - [ ] **Step 1: Create relay-backed NativeApi factory**
 
 Add `createRelayNativeApi(relayTransport, targetDeviceId)` that:
+
 1. Sends RPC requests by encrypting them and forwarding via relay
 2. Receives RPC responses from the relay's `onMessage` callback
 3. Same `NativeApi` interface as existing remote API
@@ -1194,11 +1177,13 @@ git commit -m "feat: bridge relay transport to NativeApi interface"
 On first app launch, auto-generate a device pairing token and E2E key pair so the QR code is ready immediately without user configuration.
 
 **Files:**
+
 - Modify: `apps/web/src/appSettings.ts` — add initialization logic
 
 - [ ] **Step 1: Add auto-generation**
 
 When `useAppSettings()` first loads and `devicePairingToken` is empty, generate:
+
 - A random 32-char hex pairing token
 - An ECDH key pair (public + private key)
 
@@ -1218,6 +1203,7 @@ git commit -m "feat: auto-generate device identity and E2E keys on first launch"
 Document how to deploy the relay server to a VPS.
 
 **Files:**
+
 - Create: `apps/relay/Dockerfile`
 - Create: `apps/relay/README.md`
 
@@ -1236,6 +1222,7 @@ CMD ["node", "src/index.ts"]
 - [ ] **Step 2: Create README with deploy instructions**
 
 Cover:
+
 - DigitalOcean / any VPS setup
 - Docker deploy
 - SSL with Let's Encrypt (nginx reverse proxy)
@@ -1253,21 +1240,23 @@ git commit -m "docs: add relay server deployment guide"
 
 ## Security Model Summary
 
-| Layer | Protection |
-|-------|-----------|
-| **Transport** | WSS (TLS) — encrypted in transit, relay cannot sniff |
-| **Authentication** | Pairing token — only devices with the correct token can pair |
-| **E2E Encryption** | ECDH + AES-256-GCM — relay cannot read message contents |
-| **Rate Limiting** | 20 connections/minute per IP — prevents brute-force pairing |
-| **Message Integrity** | AES-GCM includes authentication tag — tampering detected |
-| **Forward Secrecy** | New key pair on each app install — past messages unreadable if key leaked |
+| Layer                 | Protection                                                                |
+| --------------------- | ------------------------------------------------------------------------- |
+| **Transport**         | WSS (TLS) — encrypted in transit, relay cannot sniff                      |
+| **Authentication**    | Pairing token — only devices with the correct token can pair              |
+| **E2E Encryption**    | ECDH + AES-256-GCM — relay cannot read message contents                   |
+| **Rate Limiting**     | 20 connections/minute per IP — prevents brute-force pairing               |
+| **Message Integrity** | AES-GCM includes authentication tag — tampering detected                  |
+| **Forward Secrecy**   | New key pair on each app install — past messages unreadable if key leaked |
 
 **What the relay server CAN see:**
+
 - Which device IDs are online
 - Which devices are paired (but not their communication content)
 - Message sizes and timing
 
 **What the relay server CANNOT do:**
+
 - Read any messages (E2E encrypted)
 - Inject fake messages (AES-GCM auth tag would fail)
 - Pair devices without the correct token

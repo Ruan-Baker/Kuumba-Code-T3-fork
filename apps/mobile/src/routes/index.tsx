@@ -28,14 +28,22 @@ function ChatView() {
   const [reasoningLevel, setReasoningLevel] = useState<string>("high");
   const [provider, setProvider] = useState<"claudeAgent" | "codex">("claudeAgent");
   const [interactionMode, setInteractionMode] = useState<"chat" | "plan">("chat");
-  const [runtimeMode, setRuntimeMode] = useState<"full-access" | "approval-required">("full-access");
+  const [runtimeMode, setRuntimeMode] = useState<"full-access" | "approval-required">(
+    "full-access",
+  );
   const [fastMode, setFastMode] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
   const savedDevices = useSettingsStore((s) => s.savedDevices);
   const { devices, refreshAll } = useDevicesStore();
-  const { activeDeviceId, setActiveDevice, connect, disconnect, getActiveTransport, setModeSyncHandler } =
-    useConnectionStore();
+  const {
+    activeDeviceId,
+    setActiveDevice,
+    connect,
+    disconnect,
+    getActiveTransport,
+    setModeSyncHandler,
+  } = useConnectionStore();
 
   // Poll direct devices + auto-connect relay devices
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -84,13 +92,16 @@ function ChatView() {
   }, []);
 
   // Send composer state change to desktop via RPC
-  const sendComposerState = useCallback((patch: Record<string, string>) => {
-    const t = getActiveTransport();
-    if (!t) return;
-    void t.request("composer.setState", patch).catch((err: unknown) => {
-      console.warn("[App] composer.setState failed:", err);
-    });
-  }, [getActiveTransport]);
+  const sendComposerState = useCallback(
+    (patch: Record<string, string>) => {
+      const t = getActiveTransport();
+      if (!t) return;
+      void t.request("composer.setState", patch).catch((err: unknown) => {
+        console.warn("[App] composer.setState failed:", err);
+      });
+    },
+    [getActiveTransport],
+  );
 
   // Listen for mode sync from desktop
   useEffect(() => {
@@ -116,7 +127,13 @@ function ChatView() {
   // detectProvider helper — used after session hook
   function detectProvider(model: string): "claudeAgent" | "codex" {
     if (model.startsWith("claude-") || model.startsWith("claude_")) return "claudeAgent";
-    if (model.startsWith("gpt-") || model.startsWith("codex") || model.startsWith("o1") || model.startsWith("o3")) return "codex";
+    if (
+      model.startsWith("gpt-") ||
+      model.startsWith("codex") ||
+      model.startsWith("o1") ||
+      model.startsWith("o3")
+    )
+      return "codex";
     return "codex";
   }
 
@@ -144,7 +161,14 @@ function ChatView() {
 
   // Session hook
   const transport = getActiveTransport();
-  console.log("[App] render: activeDeviceId=", activeDeviceId, "activeThreadId=", activeThreadId, "transport=", !!transport);
+  console.log(
+    "[App] render: activeDeviceId=",
+    activeDeviceId,
+    "activeThreadId=",
+    activeThreadId,
+    "transport=",
+    !!transport,
+  );
   const session = useSession(transport, activeThreadId);
 
   // Detect provider and model from thread data + fetch modes from desktop
@@ -161,12 +185,18 @@ function ChatView() {
     }
 
     // Fetch modes from desktop (plan/chat, supervised/full-access, reasoning)
-    void t.request<Record<string, unknown>>("composer.getState").then((state) => {
-      if (state.interactionMode) setInteractionMode(state.interactionMode === "plan" ? "plan" : "chat");
-      if (state.runtimeMode) setRuntimeMode(state.runtimeMode as "full-access" | "approval-required");
-      if (state.reasoningLevel) setReasoningLevel(state.reasoningLevel as string);
-      if (state.fastMode !== undefined) setFastMode(state.fastMode === true || state.fastMode === "true");
-    }).catch(() => {});
+    void t
+      .request<Record<string, unknown>>("composer.getState")
+      .then((state) => {
+        if (state.interactionMode)
+          setInteractionMode(state.interactionMode === "plan" ? "plan" : "chat");
+        if (state.runtimeMode)
+          setRuntimeMode(state.runtimeMode as "full-access" | "approval-required");
+        if (state.reasoningLevel) setReasoningLevel(state.reasoningLevel as string);
+        if (state.fastMode !== undefined)
+          setFastMode(state.fastMode === true || state.fastMode === "true");
+      })
+      .catch(() => {});
   }, [activeThreadId, session.thread?.model]);
 
   const { relayDevices } = useConnectionStore();
@@ -177,7 +207,10 @@ function ChatView() {
       deviceId: string;
       deviceName: string;
       online: boolean;
-      projects: Array<{ projectName: string; sessions: Array<{ threadId: string; title: string; status: string }> }>;
+      projects: Array<{
+        projectName: string;
+        sessions: Array<{ threadId: string; title: string; status: string }>;
+      }>;
     }> = [];
 
     // Direct devices from HTTP polling
@@ -198,7 +231,10 @@ function ChatView() {
         deviceId: d.deviceId,
         deviceName: d.config.name,
         online: d.online,
-        projects: Object.entries(projectMap).map(([projectName, sess]) => ({ projectName, sessions: sess })),
+        projects: Object.entries(projectMap).map(([projectName, sess]) => ({
+          projectName,
+          sessions: sess,
+        })),
       });
     }
 
@@ -212,13 +248,20 @@ function ChatView() {
       for (const s of sessions) {
         const pName = s.projectName || "Project";
         if (!projectMap[pName]) projectMap[pName] = [];
-        projectMap[pName]!.push({ threadId: s.threadId, title: s.title || "Untitled", status: s.status });
+        projectMap[pName]!.push({
+          threadId: s.threadId,
+          title: s.title || "Untitled",
+          status: s.status,
+        });
       }
       result.push({
         deviceId: sd.id,
         deviceName: sd.name,
         online: rd?.online ?? false,
-        projects: Object.entries(projectMap).map(([projectName, sess]) => ({ projectName, sessions: sess })),
+        projects: Object.entries(projectMap).map(([projectName, sess]) => ({
+          projectName,
+          sessions: sess,
+        })),
       });
     }
 
@@ -242,18 +285,27 @@ function ChatView() {
   }, [waitingForResponse, session.messages]);
 
   function handleSelectSession(deviceId: string, threadId: string) {
-    const device = savedDevices.find((d) => d.id === deviceId)
-      ?? savedDevices.find((d) => d.deviceId === deviceId);
+    const device =
+      savedDevices.find((d) => d.id === deviceId) ??
+      savedDevices.find((d) => d.deviceId === deviceId);
     if (device) {
       const t = connect(device);
-      console.log("[App] selectSession device=", device.id, "thread=", threadId, "transport=", t, "existing connections=", Object.keys(useConnectionStore.getState().connections));
+      console.log(
+        "[App] selectSession device=",
+        device.id,
+        "thread=",
+        threadId,
+        "transport=",
+        t,
+        "existing connections=",
+        Object.keys(useConnectionStore.getState().connections),
+      );
       setActiveDevice(device.id);
       setActiveThreadId(threadId);
     } else {
       console.warn("[App] selectSession: device not found for", deviceId);
     }
   }
-
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -295,14 +347,26 @@ function ChatView() {
       ) : session.error ? (
         <main className="flex flex-1 flex-col items-center justify-center gap-3 px-4">
           <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-destructive-foreground">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="text-destructive-foreground"
+            >
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
           <p className="text-center text-sm text-muted-foreground">{session.error}</p>
-          <button onClick={() => setActiveThreadId(null)} className="text-sm font-medium text-primary">
+          <button
+            onClick={() => setActiveThreadId(null)}
+            className="text-sm font-medium text-primary"
+          >
             Go back
           </button>
         </main>
@@ -343,7 +407,10 @@ function ChatView() {
         placeholder={hasSession ? "Ask anything, @tag files..." : "Connect a device to start..."}
         interactionMode={interactionMode}
         runtimeMode={runtimeMode}
-        onSend={(text, images) => { setWaitingForResponse(true); session.sendMessage(text, images, { runtimeMode, interactionMode, provider }); }}
+        onSend={(text, images) => {
+          setWaitingForResponse(true);
+          session.sendMessage(text, images, { runtimeMode, interactionMode, provider });
+        }}
         onStop={session.stopTurn}
         onModelPickerOpen={() => setModelPickerOpen(true)}
         onOpenNotes={() => setNotesOpen(true)}
@@ -379,9 +446,18 @@ function ChatView() {
         selectedModel={selectedModel}
         reasoningLevel={reasoningLevel}
         fastMode={fastMode}
-        onSelectModel={(model) => { setSelectedModel(model); sendComposerState({ model }); }}
-        onReasoningLevelChange={(level) => { setReasoningLevel(level); sendComposerState({ reasoningLevel: level }); }}
-        onFastModeChange={(enabled) => { setFastMode(enabled); sendComposerState({ fastMode: enabled ? "true" : "false" }); }}
+        onSelectModel={(model) => {
+          setSelectedModel(model);
+          sendComposerState({ model });
+        }}
+        onReasoningLevelChange={(level) => {
+          setReasoningLevel(level);
+          sendComposerState({ reasoningLevel: level });
+        }}
+        onFastModeChange={(enabled) => {
+          setFastMode(enabled);
+          sendComposerState({ fastMode: enabled ? "true" : "false" });
+        }}
       />
 
       <NotesModal
@@ -414,9 +490,7 @@ function WorkingIndicator() {
         <span className="size-[5px] rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
         <span className="size-[5px] rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
       </div>
-      <span className="text-xs text-muted-foreground/60">
-        Working for {elapsed}s
-      </span>
+      <span className="text-xs text-muted-foreground/60">Working for {elapsed}s</span>
     </div>
   );
 }

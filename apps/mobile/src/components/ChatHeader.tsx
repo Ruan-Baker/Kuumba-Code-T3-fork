@@ -70,10 +70,13 @@ export function ChatHeader({
   }
 
   // Resolve current device/project from IDs
-  const selectedDevice = selectedDeviceId ? devices.find((d) => d.deviceId === selectedDeviceId) : null;
-  const selectedProject = selectedDevice && selectedProjectName
-    ? selectedDevice.projects.find((p) => p.projectName === selectedProjectName)
+  const selectedDevice = selectedDeviceId
+    ? devices.find((d) => d.deviceId === selectedDeviceId)
     : null;
+  const selectedProject =
+    selectedDevice && selectedProjectName
+      ? selectedDevice.projects.find((p) => p.projectName === selectedProjectName)
+      : null;
 
   const showDeviceList = !selectedDeviceId;
   const showProjectList = selectedDevice != null && !selectedProjectName;
@@ -81,9 +84,13 @@ export function ChatHeader({
 
   // Pill label
   const onlineDevices = devices.filter((d) => d.online);
-  const pillLabel = activeSessionTitle
-    ?? (onlineDevices.length > 0 ? onlineDevices[0]!.deviceName :
-        devices.length > 0 ? devices[0]!.deviceName : "No device");
+  const pillLabel =
+    activeSessionTitle ??
+    (onlineDevices.length > 0
+      ? onlineDevices[0]!.deviceName
+      : devices.length > 0
+        ? devices[0]!.deviceName
+        : "No device");
   const pillOnline = hasActiveSession || onlineDevices.length > 0;
 
   const [spinning, setSpinning] = useState(false);
@@ -130,11 +137,21 @@ export function ChatHeader({
           }}
           className="flex h-9 w-[160px] items-center gap-1.5 rounded-full border border-border px-3 pl-2.5 active:bg-muted"
         >
-          <span className={cn("size-2 shrink-0 rounded-full", pillOnline ? "bg-success" : "bg-muted-foreground/40")} />
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              pillOnline ? "bg-success" : "bg-muted-foreground/40",
+            )}
+          />
           <span className="min-w-0 flex-1 truncate text-left text-[13px] font-medium text-foreground">
             {pillLabel}
           </span>
-          <ChevronDown className={cn("size-3 shrink-0 text-muted-foreground transition-transform", dropdownOpen && "rotate-180")} />
+          <ChevronDown
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground transition-transform",
+              dropdownOpen && "rotate-180",
+            )}
+          />
         </button>
 
         {dropdownOpen && (
@@ -144,7 +161,10 @@ export function ChatHeader({
               <button
                 onClick={() => {
                   if (showSessionList) setSelectedProjectName(null);
-                  else { setSelectedDeviceId(null); setSelectedProjectName(null); }
+                  else {
+                    setSelectedDeviceId(null);
+                    setSelectedProjectName(null);
+                  }
                 }}
                 className="flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left active:bg-muted"
               >
@@ -156,11 +176,15 @@ export function ChatHeader({
             )}
 
             {/* Device list */}
-            {showDeviceList && (
-              devices.length === 0 ? (
+            {showDeviceList &&
+              (devices.length === 0 ? (
                 <div className="px-4 py-6 text-center">
                   <p className="text-sm text-muted-foreground">No devices connected</p>
-                  <Link to="/connect" onClick={() => closeDropdown()} className="mt-2 inline-block text-xs font-medium text-primary">
+                  <Link
+                    to="/connect"
+                    onClick={() => closeDropdown()}
+                    className="mt-2 inline-block text-xs font-medium text-primary"
+                  >
                     Add a device
                   </Link>
                 </div>
@@ -178,8 +202,15 @@ export function ChatHeader({
                         device.online ? "active:bg-muted" : "opacity-40",
                       )}
                     >
-                      <span className={cn("size-1.5 shrink-0 rounded-full", device.online ? "bg-success" : "bg-destructive")} />
-                      <span className="flex-1 truncate text-sm text-foreground">{device.deviceName}</span>
+                      <span
+                        className={cn(
+                          "size-1.5 shrink-0 rounded-full",
+                          device.online ? "bg-success" : "bg-destructive",
+                        )}
+                      />
+                      <span className="flex-1 truncate text-sm text-foreground">
+                        {device.deviceName}
+                      </span>
                       {device.online && (
                         <span className="text-[11px] text-muted-foreground">
                           {device.projects.reduce((n, p) => n + p.sessions.length, 0)} sessions
@@ -191,8 +222,7 @@ export function ChatHeader({
                     </button>
                   ))}
                 </div>
-              )
-            )}
+              ))}
 
             {/* Project list */}
             {showProjectList && selectedDevice && (
@@ -208,8 +238,12 @@ export function ChatHeader({
                       onClick={() => setSelectedProjectName(project.projectName)}
                       className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left active:bg-muted"
                     >
-                      <span className="flex-1 truncate text-sm text-foreground">{project.projectName}</span>
-                      <span className="text-[11px] text-muted-foreground">{project.sessions.length}</span>
+                      <span className="flex-1 truncate text-sm text-foreground">
+                        {project.projectName}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {project.sessions.length}
+                      </span>
                     </button>
                   ))
                 )}
@@ -225,12 +259,18 @@ export function ChatHeader({
                     onClick={() => handleSelectSession(selectedDevice.deviceId, session.threadId)}
                     className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left active:bg-muted"
                   >
-                    <span className={cn(
-                      "size-1.5 shrink-0 rounded-full",
-                      session.status === "running" ? "bg-primary" :
-                      session.status === "ready" ? "bg-success" :
-                      session.status === "error" ? "bg-destructive" : "bg-muted-foreground",
-                    )} />
+                    <span
+                      className={cn(
+                        "size-1.5 shrink-0 rounded-full",
+                        session.status === "running"
+                          ? "bg-primary"
+                          : session.status === "ready"
+                            ? "bg-success"
+                            : session.status === "error"
+                              ? "bg-destructive"
+                              : "bg-muted-foreground",
+                      )}
+                    />
                     <span className="flex-1 truncate text-sm text-foreground">{session.title}</span>
                   </button>
                 ))}

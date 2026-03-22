@@ -24,11 +24,7 @@ const TTS_SPEED_OPTIONS = [
 ];
 
 function SettingsPage() {
-  const {
-    theme, setTheme,
-    ttsSpeed, setTtsSpeed,
-    savedDevices, removeDevice,
-  } = useSettingsStore();
+  const { theme, setTheme, ttsSpeed, setTtsSpeed, savedDevices, removeDevice } = useSettingsStore();
   const { relayConnected, relayDevices } = useConnectionStore();
 
   return (
@@ -88,21 +84,25 @@ function SettingsPage() {
             <div className="space-y-2">
               {/* Relay server connection status */}
               {savedDevices.some((d) => d.isRelay) && (
-                <div className={cn(
-                  "flex items-center gap-2.5 rounded-lg border px-3 py-2",
-                  relayConnected
-                    ? "border-success/30 bg-success/5"
-                    : "border-border bg-background",
-                )}>
+                <div
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg border px-3 py-2",
+                    relayConnected
+                      ? "border-success/30 bg-success/5"
+                      : "border-border bg-background",
+                  )}
+                >
                   {relayConnected ? (
                     <Wifi className="size-3.5 text-success-foreground" />
                   ) : (
                     <WifiOff className="size-3.5 text-muted-foreground" />
                   )}
-                  <span className={cn(
-                    "text-xs font-medium",
-                    relayConnected ? "text-success-foreground" : "text-muted-foreground",
-                  )}>
+                  <span
+                    className={cn(
+                      "text-xs font-medium",
+                      relayConnected ? "text-success-foreground" : "text-muted-foreground",
+                    )}
+                  >
                     {relayConnected ? "Connected to relay server" : "Connecting to relay..."}
                   </span>
                 </div>
@@ -124,10 +124,12 @@ function SettingsPage() {
                       <div className="relative shrink-0">
                         <Monitor className="size-4 text-muted-foreground/60" />
                         {device.isRelay && (
-                          <span className={cn(
-                            "absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-background",
-                            isOnline ? "bg-success" : "bg-muted-foreground/40",
-                          )} />
+                          <span
+                            className={cn(
+                              "absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-background",
+                              isOnline ? "bg-success" : "bg-muted-foreground/40",
+                            )}
+                          />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -136,7 +138,9 @@ function SettingsPage() {
                         </p>
                         <p className="truncate font-mono text-[11px] text-muted-foreground">
                           {device.isRelay
-                            ? isOnline ? "Online via relay" : "Offline"
+                            ? isOnline
+                              ? "Online via relay"
+                              : "Offline"
                             : `${device.host}:${device.port}`}
                         </p>
                       </div>
@@ -194,7 +198,13 @@ function SettingsPage() {
   );
 }
 
-function TTSSettings({ ttsSpeed, setTtsSpeed }: { ttsSpeed: 1 | 1.5 | 2; setTtsSpeed: (v: 1 | 1.5 | 2) => void }) {
+function TTSSettings({
+  ttsSpeed,
+  setTtsSpeed,
+}: {
+  ttsSpeed: 1 | 1.5 | 2;
+  setTtsSpeed: (v: 1 | 1.5 | 2) => void;
+}) {
   return (
     <section className="rounded-2xl border border-border bg-card p-4">
       <div className="mb-3">
@@ -273,7 +283,9 @@ function VoiceInputSettings() {
           <Mic className="size-4 shrink-0 text-muted-foreground" />
           <div>
             <p className="text-sm font-medium text-foreground">Speech recognition</p>
-            <p className="text-[11px] text-muted-foreground">Uses your device's built-in voice recognition. No downloads needed.</p>
+            <p className="text-[11px] text-muted-foreground">
+              Uses your device's built-in voice recognition. No downloads needed.
+            </p>
           </div>
         </div>
 
@@ -281,7 +293,8 @@ function VoiceInputSettings() {
         <div className="rounded-lg border border-border bg-background p-3">
           <p className="mb-1.5 text-xs font-medium text-foreground">OpenRouter API Key</p>
           <p className="mb-2 text-[11px] text-muted-foreground">
-            Optional — cleans up transcription with AI for better accuracy with dev terms (~$0.01 per 1000 dictations).
+            Optional — cleans up transcription with AI for better accuracy with dev terms (~$0.01
+            per 1000 dictations).
           </p>
           <div className="flex gap-2">
             <input

@@ -182,8 +182,13 @@ code {
 
 /* Pulse animation for loading */
 @keyframes skeleton-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.15; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.15;
+  }
 }
 
 /* Chat markdown (simplified from desktop) */
@@ -260,8 +265,12 @@ code {
 
 /* Ultrathink rainbow animation */
 @keyframes ultrathink-rainbow {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 .ultrathink-frame {
@@ -284,7 +293,11 @@ code {
   background:
     linear-gradient(var(--card), var(--card)) padding-box,
     var(--ultrathink-spectrum) border-box;
-  background-size: 100% 100%, 220% 220%;
-  background-position: 0 0, 0% 50%;
+  background-size:
+    100% 100%,
+    220% 220%;
+  background-position:
+    0 0,
+    0% 50%;
   animation: ultrathink-rainbow 10s linear infinite;
 }

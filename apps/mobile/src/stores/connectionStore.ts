@@ -37,11 +37,31 @@ interface ConnectionStoreState {
   /** Relay WebSocket connection status */
   relayConnected: boolean;
   /** Callback for mode sync from desktop */
-  modeSyncHandler: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | null;
-  setModeSyncHandler: (handler: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | null) => void;
+  modeSyncHandler:
+    | ((data: {
+        interactionMode?: string;
+        runtimeMode?: string;
+        model?: string;
+        reasoningLevel?: string;
+      }) => void)
+    | null;
+  setModeSyncHandler: (
+    handler:
+      | ((data: {
+          interactionMode?: string;
+          runtimeMode?: string;
+          model?: string;
+          reasoningLevel?: string;
+        }) => void)
+      | null,
+  ) => void;
   /** Callback for notes sync from desktop */
-  notesSyncHandler: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | null;
-  setNotesSyncHandler: (handler: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | null) => void;
+  notesSyncHandler:
+    | ((data: { cwd: string; editorState: string; timestamp: number }) => void)
+    | null;
+  setNotesSyncHandler: (
+    handler: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | null,
+  ) => void;
 
   connect: (device: SavedDevice) => AnyTransport;
   disconnect: (deviceId: string) => void;
@@ -52,9 +72,7 @@ interface ConnectionStoreState {
 }
 
 function buildDirectWsUrl(device: SavedDevice): string {
-  const tokenParam = device.authToken
-    ? `?token=${encodeURIComponent(device.authToken)}`
-    : "";
+  const tokenParam = device.authToken ? `?token=${encodeURIComponent(device.authToken)}` : "";
   return `ws://${device.host}:${device.port}${tokenParam}`;
 }
 

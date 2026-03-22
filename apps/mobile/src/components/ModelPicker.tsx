@@ -49,7 +49,9 @@ export function ModelPicker({
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
+      return () => {
+        document.body.style.overflow = "";
+      };
     }
   }, [open]);
 
@@ -69,29 +71,34 @@ export function ModelPicker({
     setDragY(0);
   }, [dragY, onClose]);
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    dragging.current = true;
-    dragStartY.current = e.clientY;
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current) return;
-      setDragY(Math.max(0, ev.clientY - dragStartY.current));
-    };
-    const onUp = () => {
-      dragging.current = false;
-      setDragY((y) => { if (y > 100) onClose(); return 0; });
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [onClose]);
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      dragging.current = true;
+      dragStartY.current = e.clientY;
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging.current) return;
+        setDragY(Math.max(0, ev.clientY - dragStartY.current));
+      };
+      const onUp = () => {
+        dragging.current = false;
+        setDragY((y) => {
+          if (y > 100) onClose();
+          return 0;
+        });
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [onClose],
+  );
 
   if (!open) return null;
 
   const models = MODEL_OPTIONS_BY_PROVIDER[provider];
-  const effortOptions = provider === "claudeAgent"
-    ? CLAUDE_CODE_EFFORT_OPTIONS
-    : CODEX_REASONING_EFFORT_OPTIONS;
+  const effortOptions =
+    provider === "claudeAgent" ? CLAUDE_CODE_EFFORT_OPTIONS : CODEX_REASONING_EFFORT_OPTIONS;
 
   const providerLabel = provider === "claudeAgent" ? "Claude" : "Codex";
 
@@ -119,9 +126,7 @@ export function ModelPicker({
 
         {/* Header — no close button */}
         <div className="flex items-center px-5 pb-3 pt-1">
-          <span className="text-base font-semibold text-foreground">
-            {providerLabel} Models
-          </span>
+          <span className="text-base font-semibold text-foreground">{providerLabel} Models</span>
         </div>
 
         {/* Model list */}
@@ -142,9 +147,7 @@ export function ModelPicker({
                 >
                   {isSelected && <div className="size-2.5 rounded-full bg-primary" />}
                 </div>
-                <span className="text-sm font-medium text-foreground">
-                  {model.name}
-                </span>
+                <span className="text-sm font-medium text-foreground">{model.name}</span>
               </button>
             );
           })}

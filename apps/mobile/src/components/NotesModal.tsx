@@ -14,13 +14,7 @@ interface NotesModalProps {
   projectName: string;
 }
 
-export function NotesModal({
-  open,
-  onClose,
-  transport,
-  projectCwd,
-  projectName,
-}: NotesModalProps) {
+export function NotesModal({ open, onClose, transport, projectCwd, projectName }: NotesModalProps) {
   const { notes, loading, load, save, setEditorState, reset } = useNotesStore();
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -37,7 +31,10 @@ export function NotesModal({
     if (open && transport && projectCwd) {
       void load(transport, projectCwd);
     }
-    if (!open) { reset(); setDragY(0); }
+    if (!open) {
+      reset();
+      setDragY(0);
+    }
   }, [open, transport, projectCwd, load, reset]);
 
   // Remount editor when loading completes
@@ -52,13 +49,18 @@ export function NotesModal({
   const triggerSave = useCallback(() => {
     if (!transport || !projectCwd) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => { void save(transport, projectCwd); }, 300);
+    saveTimeoutRef.current = setTimeout(() => {
+      void save(transport, projectCwd);
+    }, 300);
   }, [transport, projectCwd, save]);
 
-  const handleChange = useCallback((serialized: string) => {
-    setEditorState(serialized);
-    triggerSave();
-  }, [setEditorState, triggerSave]);
+  const handleChange = useCallback(
+    (serialized: string) => {
+      setEditorState(serialized);
+      triggerSave();
+    },
+    [setEditorState, triggerSave],
+  );
 
   const editorState = notes?.editorState ?? null;
 
@@ -83,27 +85,37 @@ export function NotesModal({
   }, [dragY, onClose]);
 
   // Also mouse-based swipe for desktop testing
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    dragging.current = true;
-    dragStartY.current = e.clientY;
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current) return;
-      setDragY(Math.max(0, ev.clientY - dragStartY.current));
-    };
-    const onUp = () => {
-      dragging.current = false;
-      setDragY((y: number) => { if (y > 120) { onClose(); } return 0; });
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [onClose]);
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      dragging.current = true;
+      dragStartY.current = e.clientY;
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging.current) return;
+        setDragY(Math.max(0, ev.clientY - dragStartY.current));
+      };
+      const onUp = () => {
+        dragging.current = false;
+        setDragY((y: number) => {
+          if (y > 120) {
+            onClose();
+          }
+          return 0;
+        });
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [onClose],
+  );
 
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
+      return () => {
+        document.body.style.overflow = "";
+      };
     }
   }, [open]);
 

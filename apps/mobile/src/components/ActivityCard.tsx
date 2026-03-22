@@ -1,5 +1,14 @@
 import { memo, useState } from "react";
-import { Terminal, FileText, FileEdit, Search, ChevronDown, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import {
+  Terminal,
+  FileText,
+  FileEdit,
+  Search,
+  ChevronDown,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+} from "lucide-react";
 import { cn } from "~/lib/utils";
 import type { ActivityEntry } from "~/lib/useSession";
 
@@ -66,20 +75,24 @@ export const ActivityCard = memo(function ActivityCard({ activity }: ActivityCar
           detail && "active:bg-muted/30",
         )}
       >
-        <span className={cn(
-          "shrink-0",
-          activity.tone === "error" ? "text-destructive-foreground" : "text-muted-foreground",
-        )}>
+        <span
+          className={cn(
+            "shrink-0",
+            activity.tone === "error" ? "text-destructive-foreground" : "text-muted-foreground",
+          )}
+        >
           {getIcon(activity.kind, activity.tone)}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {activity.summary}
         </span>
         {detail && (
-          <ChevronDown className={cn(
-            "size-3 shrink-0 text-muted-foreground/50 transition-transform",
-            expanded && "rotate-180",
-          )} />
+          <ChevronDown
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground/50 transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
         )}
       </button>
 

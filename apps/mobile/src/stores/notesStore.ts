@@ -113,14 +113,16 @@ export const useNotesStore = create<NotesState>()((set, get) => ({
     }
   },
 
-  setEditorState: (editorState) => set((s) => ({
-    notes: s.notes ? { ...s.notes, editorState } : null,
-  })),
+  setEditorState: (editorState) =>
+    set((s) => ({
+      notes: s.notes ? { ...s.notes, editorState } : null,
+    })),
 
   /** Update from remote — does NOT trigger push back. */
-  setEditorStateFromRemote: (editorState) => set((s) => ({
-    notes: s.notes ? { ...s.notes, editorState } : null,
-  })),
+  setEditorStateFromRemote: (editorState) =>
+    set((s) => ({
+      notes: s.notes ? { ...s.notes, editorState } : null,
+    })),
 
   reset: () => set({ notes: null, loading: false, saving: false }),
 }));

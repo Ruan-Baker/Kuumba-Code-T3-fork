@@ -44,7 +44,10 @@ const components: Components = {
     let codeText = "";
     let language = "";
 
-    if (isValidElement<{ className?: string; children?: ReactNode }>(codeChild) && codeChild.type === "code") {
+    if (
+      isValidElement<{ className?: string; children?: ReactNode }>(codeChild) &&
+      codeChild.type === "code"
+    ) {
       codeText = nodeToPlainText(codeChild.props.children);
       const match = codeChild.props.className?.match(/language-([^\s]+)/);
       language = match?.[1] ?? "";
@@ -57,9 +60,7 @@ const components: Components = {
             <span className="font-mono text-[11px] text-muted-foreground">{language}</span>
           </div>
         )}
-        <pre className={cn(language && "!mt-0 !rounded-t-none")}>
-          {children}
-        </pre>
+        <pre className={cn(language && "!mt-0 !rounded-t-none")}>{children}</pre>
         <CopyButton text={codeText} />
       </div>
     );
@@ -79,9 +80,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ text, isStreaming }: Ch
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>
-      {isStreaming && (
-        <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />
-      )}
+      {isStreaming && <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />}
     </div>
   );
 });

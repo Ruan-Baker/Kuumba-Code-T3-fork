@@ -171,11 +171,12 @@ function ConnectPage() {
         <div className="mx-auto flex rounded-lg bg-muted/50 p-0.5">
           <button
             type="button"
-            onClick={() => { setMode("relay"); setError(null); }}
+            onClick={() => {
+              setMode("relay");
+              setError(null);
+            }}
             className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-xs font-medium transition-all ${
-              mode === "relay"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
+              mode === "relay" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
             }`}
           >
             <Globe className="size-3.5" />
@@ -183,7 +184,10 @@ function ConnectPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setMode("direct"); setError(null); }}
+            onClick={() => {
+              setMode("direct");
+              setError(null);
+            }}
             className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-xs font-medium transition-all ${
               mode === "direct"
                 ? "bg-background text-foreground shadow-sm"
@@ -229,7 +233,7 @@ function ConnectPage() {
               value={relayPasteJson}
               onChange={(e) => handleRelayPaste(e.target.value)}
               className="box-border min-h-[72px] w-full resize-none rounded-xl border border-border bg-card p-3 font-mono text-[13px] text-foreground placeholder:text-muted-foreground/40"
-              placeholder='Paste JSON from desktop Settings → copy button...'
+              placeholder="Paste JSON from desktop Settings → copy button..."
             />
 
             {/* Divider */}
@@ -274,9 +278,7 @@ function ConnectPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Relay server URL
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">Relay server URL</span>
                 <input
                   type="url"
                   value={relayUrl}
@@ -302,7 +304,7 @@ function ConnectPage() {
               value={directPasteJson}
               onChange={(e) => handleDirectPaste(e.target.value)}
               className="box-border min-h-[72px] w-full resize-none rounded-xl border border-border bg-card p-3 font-mono text-[13px] text-foreground placeholder:text-muted-foreground/40"
-              placeholder='Paste JSON from desktop...'
+              placeholder="Paste JSON from desktop..."
             />
 
             {/* Divider */}
@@ -363,9 +365,7 @@ function ConnectPage() {
           </>
         )}
 
-        {error && (
-          <p className="text-sm text-destructive-foreground">{error}</p>
-        )}
+        {error && <p className="text-sm text-destructive-foreground">{error}</p>}
       </div>
 
       {/* Connect button */}
@@ -375,11 +375,7 @@ function ConnectPage() {
           disabled={connecting}
           className="h-12 w-full rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:bg-primary/90 disabled:opacity-60"
         >
-          {connecting
-            ? "Connecting..."
-            : mode === "relay"
-              ? "Pair & Save"
-              : "Connect & Save"}
+          {connecting ? "Connecting..." : mode === "relay" ? "Pair & Save" : "Connect & Save"}
         </button>
       </div>
     </div>

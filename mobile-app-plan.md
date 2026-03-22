@@ -179,12 +179,7 @@ import wasm from "vite-plugin-wasm";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 
 export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    react(),
-    wasm(),
-    TanStackRouterVite({ routesDirectory: "src/routes" }),
-  ],
+  plugins: [tailwindcss(), react(), wasm(), TanStackRouterVite({ routesDirectory: "src/routes" })],
   optimizeDeps: {
     exclude: ["onnxruntime-web", "@mintplex-labs/piper-tts-web"],
   },
@@ -219,10 +214,10 @@ App Launch
 
 ### Bottom Navigation Bar (persistent on /devices and /settings)
 
-| Tab | Icon | Route | Description |
-|-----|------|-------|-------------|
-| Devices | `MonitorSmartphone` | `/devices` | All devices and their sessions |
-| Settings | `Settings` | `/settings` | Theme, TTS, manage saved devices |
+| Tab      | Icon                | Route       | Description                      |
+| -------- | ------------------- | ----------- | -------------------------------- |
+| Devices  | `MonitorSmartphone` | `/devices`  | All devices and their sessions   |
+| Settings | `Settings`          | `/settings` | Theme, TTS, manage saved devices |
 
 The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:deviceId/:threadId` (full-screen chat).
 
@@ -235,6 +230,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 **Purpose:** First-time device setup. Scan QR code from desktop Settings page or enter connection details manually.
 
 **Layout:**
+
 ```
 ┌─────────────────────────────┐
 │         Kuumba Code         │  ← App name / logo
@@ -261,17 +257,20 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 ```
 
 **Components used:**
+
 - `Input` (4 fields)
 - `Button` (connect)
 - Capacitor `BarcodeScanner` plugin (native) or fallback text input (browser)
 
 **Behavior:**
+
 1. QR scan decodes JSON: `{ host, port, token, deviceName? }`
 2. App creates a test WebSocket connection to validate
 3. On success: saves device to `settingsStore`, navigates to `/devices`
 4. On failure: shows error toast, stays on page
 
 **Browser fallback (pre-Capacitor):**
+
 - QR scanner area shows a paste field: "Paste connection string from desktop"
 - User copies JSON from DeviceQRCode component on desktop, pastes here
 
@@ -282,6 +281,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 **Purpose:** Shows all saved devices and their active shared sessions. This is the home screen.
 
 **Layout:**
+
 ```
 ┌─────────────────────────────┐
 │  Devices              [+]   │  ← TopBar with "Add device" button
@@ -311,6 +311,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 ```
 
 **Components used:**
+
 - `TopBar` — title + "Add device" icon button (navigates to `/connect`)
 - `DeviceCard` — device name, online/offline indicator, collapsible
 - `SessionRow` — thread title, status dot, tap target
@@ -320,6 +321,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 - Pull-to-refresh via native scroll + `onRefresh` callback
 
 **Data flow:**
+
 1. On mount, iterate saved devices from `settingsStore`
 2. For each device, fetch `GET http://{host}:{port}/api/device-info` with 5s timeout
 3. Poll every 30 seconds (same as desktop `useRemoteDevices` hook)
@@ -327,6 +329,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 5. Tapping a session navigates to `/session/{deviceId}/{threadId}`
 
 **Empty states:**
+
 - No devices: "No devices connected. Tap + to add your first device." with illustration
 - Device online, no sessions: "No shared sessions on this device. Share a session from the desktop app using the broadcast button."
 - Device offline: "Device offline" in muted text, last seen timestamp
@@ -338,7 +341,8 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 **Purpose:** Full-screen conversation view for a remote session. This is the core of the mobile app.
 
 **Layout:**
-```
+
+````
 ┌─────────────────────────────┐
 │  ← Back   Session Title     │  ← TopBar with back button
 │           Kuumba-T3-fork    │     Project name subtitle
@@ -387,22 +391,25 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 │  │                    [→]│  │     Send button
 │  └───────────────────────┘  │
 └─────────────────────────────┘
-```
+````
 
 **Components used:**
 
 #### TopBar (Chat variant)
+
 - Back arrow (navigates to `/devices`)
 - Thread title (truncated)
 - Project name as subtitle badge
 - Device name + status dot
 
 #### MessagesList
+
 - Scrollable container (NOT virtualized — simpler for mobile, sessions typically have <200 messages)
 - Auto-scroll to bottom on new messages
 - Each message rendered by `MessageBubble`
 
 #### MessageBubble
+
 - **User messages:** Right-aligned, secondary background, rounded corners
 - **Assistant messages:** Left-aligned, card background
   - Rendered via `ChatMarkdown` (simplified — no file link handling)
@@ -417,6 +424,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 - **Copy button** on assistant messages (copies markdown to clipboard)
 
 #### ChatMarkdown (Simplified)
+
 - React Markdown with remark-gfm
 - Code blocks with Shiki syntax highlighting (same as desktop)
 - Copy button on code blocks
@@ -424,6 +432,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 - No image preview modal (images just render inline)
 
 #### ApprovalBar
+
 - Slides up from above composer when there's a pending approval
 - Shows approval type (command, file-read, file-change)
 - Shows the specific action (e.g., the command to run, the file to read)
@@ -432,6 +441,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 - Pending count indicator ("1 of 5")
 
 #### MobileComposer
+
 - Model picker button (opens bottom sheet)
 - Auto-growing `<textarea>` (min 1 line, max 6 lines)
 - Send button (arrow icon, primary color)
@@ -439,6 +449,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 - "Stop" button replaces send while assistant is working
 
 #### ModelPicker (Bottom Sheet)
+
 - Triggered by model name button in composer
 - Slides up from bottom (mobile-native feel)
 - Provider groups: Claude, Codex
@@ -452,6 +463,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 **Purpose:** App preferences, device management, about info.
 
 **Layout:**
+
 ```
 ┌─────────────────────────────┐
 │  Settings                   │  ← TopBar
@@ -495,6 +507,7 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 ```
 
 **Components used:**
+
 - `TopBar` — title only
 - `Select` — theme picker, speed picker
 - `Switch` — toggle for auto-download
@@ -508,39 +521,39 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 
 ### Components to Copy from `apps/web/src/components/ui/`
 
-| Component | Source File | Mobile Modifications |
-|-----------|------------|---------------------|
-| `button.tsx` | `ui/button.tsx` | Increase touch targets to 48px min |
-| `badge.tsx` | `ui/badge.tsx` | No changes |
-| `input.tsx` | `ui/input.tsx` | Larger font size (16px to prevent iOS zoom) |
-| `switch.tsx` | `ui/switch.tsx` | No changes |
-| `select.tsx` | `ui/select.tsx` | May need bottom-sheet variant |
-| `tooltip.tsx` | `ui/tooltip.tsx` | Convert to long-press on mobile |
-| `popover.tsx` | `ui/popover.tsx` | Used for notes |
-| `scroll-area.tsx` | `ui/scroll-area.tsx` | Native scroll preferred |
+| Component         | Source File          | Mobile Modifications                        |
+| ----------------- | -------------------- | ------------------------------------------- |
+| `button.tsx`      | `ui/button.tsx`      | Increase touch targets to 48px min          |
+| `badge.tsx`       | `ui/badge.tsx`       | No changes                                  |
+| `input.tsx`       | `ui/input.tsx`       | Larger font size (16px to prevent iOS zoom) |
+| `switch.tsx`      | `ui/switch.tsx`      | No changes                                  |
+| `select.tsx`      | `ui/select.tsx`      | May need bottom-sheet variant               |
+| `tooltip.tsx`     | `ui/tooltip.tsx`     | Convert to long-press on mobile             |
+| `popover.tsx`     | `ui/popover.tsx`     | Used for notes                              |
+| `scroll-area.tsx` | `ui/scroll-area.tsx` | Native scroll preferred                     |
 
 ### Components to Copy and Simplify from `apps/web/src/components/`
 
-| Component | Source | Simplifications for Mobile |
-|-----------|--------|---------------------------|
-| `ChatMarkdown.tsx` | `components/ChatMarkdown.tsx` | Remove file link interception, remove image modal |
-| `ReadAloudButton.tsx` | `components/ReadAloudButton.tsx` | Larger touch target, same functionality |
+| Component             | Source                           | Simplifications for Mobile                        |
+| --------------------- | -------------------------------- | ------------------------------------------------- |
+| `ChatMarkdown.tsx`    | `components/ChatMarkdown.tsx`    | Remove file link interception, remove image modal |
+| `ReadAloudButton.tsx` | `components/ReadAloudButton.tsx` | Larger touch target, same functionality           |
 
 ### New Mobile-Only Components
 
-| Component | Purpose |
-|-----------|---------|
-| `TopBar.tsx` | Navigation header with back button, title, subtitle |
-| `BottomNav.tsx` | Tab bar with Devices and Settings |
-| `DeviceCard.tsx` | Expandable card showing device + sessions |
-| `SessionRow.tsx` | Tappable session item with status dot |
-| `StatusDot.tsx` | Colored dot (green/yellow/red/gray) |
-| `MessageBubble.tsx` | Single chat message with role-based styling |
-| `MessagesList.tsx` | Scrollable message list with auto-scroll |
-| `MobileComposer.tsx` | Textarea + send + model picker trigger |
-| `ApprovalBar.tsx` | Pending approval banner + action buttons |
-| `ModelPicker.tsx` | Bottom sheet model selector |
-| `ProjectNotes.tsx` | Notes viewer — reuses popover pattern from desktop |
+| Component            | Purpose                                             |
+| -------------------- | --------------------------------------------------- |
+| `TopBar.tsx`         | Navigation header with back button, title, subtitle |
+| `BottomNav.tsx`      | Tab bar with Devices and Settings                   |
+| `DeviceCard.tsx`     | Expandable card showing device + sessions           |
+| `SessionRow.tsx`     | Tappable session item with status dot               |
+| `StatusDot.tsx`      | Colored dot (green/yellow/red/gray)                 |
+| `MessageBubble.tsx`  | Single chat message with role-based styling         |
+| `MessagesList.tsx`   | Scrollable message list with auto-scroll            |
+| `MobileComposer.tsx` | Textarea + send + model picker trigger              |
+| `ApprovalBar.tsx`    | Pending approval banner + action buttons            |
+| `ModelPicker.tsx`    | Bottom sheet model selector                         |
+| `ProjectNotes.tsx`   | Notes viewer — reuses popover pattern from desktop  |
 
 ---
 
@@ -552,11 +565,11 @@ The bottom nav is **hidden** on `/connect` (first-time setup) and `/session/:dev
 
 ```ts
 interface DeviceState {
-  deviceId: string;          // From saved config
-  config: SavedDevice;       // { name, host, port, authToken }
+  deviceId: string; // From saved config
+  config: SavedDevice; // { name, host, port, authToken }
   online: boolean;
   lastSeen: number | null;
-  deviceName: string;        // From /api/device-info response
+  deviceName: string; // From /api/device-info response
   sessions: RemoteSession[]; // Active shared sessions
 }
 
@@ -570,7 +583,7 @@ interface RemoteSession {
 }
 
 interface DevicesStore {
-  devices: Record<string, DeviceState>;  // keyed by deviceId
+  devices: Record<string, DeviceState>; // keyed by deviceId
   refreshing: boolean;
 
   // Actions
@@ -593,7 +606,7 @@ interface ActiveConnection {
 }
 
 interface ConnectionStore {
-  connections: Record<string, ActiveConnection>;  // keyed by deviceId
+  connections: Record<string, ActiveConnection>; // keyed by deviceId
 
   // Actions
   connect: (deviceId: string, config: SavedDevice) => Promise<NativeApi>;
@@ -614,11 +627,11 @@ interface MobileSettings {
 }
 
 interface SavedDevice {
-  id: string;         // UUID generated on save
-  name: string;       // User-friendly name
-  host: string;       // Tailscale hostname
-  port: number;       // Server port (default 3773)
-  authToken: string;  // T3CODE_AUTH_TOKEN value
+  id: string; // UUID generated on save
+  name: string; // User-friendly name
+  host: string; // Tailscale hostname
+  port: number; // Server port (default 3773)
+  authToken: string; // T3CODE_AUTH_TOKEN value
 }
 ```
 
@@ -646,22 +659,28 @@ export function createMobileNativeApi(wsUrl: string): NativeApi {
   return {
     // Only implement the methods mobile actually uses:
     dialogs: {
-      pickFolder: async () => null,     // N/A on mobile
+      pickFolder: async () => null, // N/A on mobile
       confirm: async (msg) => window.confirm(msg),
     },
-    terminal: { /* no-op stubs — mobile doesn't use terminal */ },
+    terminal: {
+      /* no-op stubs — mobile doesn't use terminal */
+    },
     projects: {
       searchEntries: (input) => transport.request(WS_METHODS.projectsSearchEntries, input),
       writeFile: (input) => transport.request(WS_METHODS.projectsWriteFile, input),
       readFile: (input) => transport.request(WS_METHODS.projectsReadFile, input),
     },
     shell: {
-      openInEditor: async () => {},     // N/A on mobile
-      openExternal: async (url) => { window.open(url, "_blank"); },
+      openInEditor: async () => {}, // N/A on mobile
+      openExternal: async (url) => {
+        window.open(url, "_blank");
+      },
     },
-    git: { /* passthrough to transport — read-only on mobile */ },
+    git: {
+      /* passthrough to transport — read-only on mobile */
+    },
     contextMenu: {
-      show: async () => null,           // N/A on mobile
+      show: async () => null, // N/A on mobile
     },
     sessions: {
       setRemoteSharing: (input) => transport.request(WS_METHODS.sessionsSetRemoteSharing, input),
@@ -679,7 +698,9 @@ export function createMobileNativeApi(wsUrl: string): NativeApi {
       getFullThreadDiff: (input) =>
         transport.request(ORCHESTRATION_WS_METHODS.getFullThreadDiff, input),
       replayEvents: (fromSeq) =>
-        transport.request(ORCHESTRATION_WS_METHODS.replayEvents, { fromSequenceExclusive: fromSeq }),
+        transport.request(ORCHESTRATION_WS_METHODS.replayEvents, {
+          fromSequenceExclusive: fromSeq,
+        }),
       onDomainEvent: (callback) =>
         transport.subscribe(ORCHESTRATION_WS_CHANNELS.domainEvent, (msg) => callback(msg.data)),
     },
@@ -722,10 +743,12 @@ async function fetchDeviceInfo(device: SavedDevice): Promise<DeviceInfo | null> 
 ### Copy Strategy
 
 Copy these files directly from `apps/web/src/lib/tts/`:
+
 - `tts-engine.ts` — Piper WASM engine, voice download, audio playback
 - `useTTS.ts` — React hook wrapping the engine
 
 **No modifications needed.** The Piper TTS engine uses:
+
 - Web Audio API (supported in Capacitor WebView)
 - WASM via `onnxruntime-web` (supported in modern WebViews)
 - IndexedDB / OPFS for voice model caching (supported)
@@ -778,7 +801,9 @@ Copy the CSS custom properties from `apps/web/src/index.css` into `apps/mobile/s
   }
 
   /* Prevent iOS zoom on input focus (font-size >= 16px) */
-  input, textarea, select {
+  input,
+  textarea,
+  select {
     font-size: 16px;
   }
 }
@@ -797,6 +822,7 @@ md:      768px+     (tablets — landscape)
 ### Touch Targets
 
 All interactive elements must meet 48x48px minimum touch target:
+
 - Buttons: `min-h-12 min-w-12` (48px)
 - List items: `min-h-12 py-3` padding
 - Icons in buttons: `size-5` (20px icon in 48px container)
@@ -810,6 +836,7 @@ All interactive elements must meet 48x48px minimum touch target:
 ### When to Add Capacitor
 
 After all pages work in Chrome mobile emulation (DevTools → toggle device toolbar):
+
 - Connect screen with manual entry works
 - Devices screen shows live data from a real server
 - Chat view sends/receives messages
@@ -860,7 +887,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     StatusBar: {
-      style: "dark",       // or "light" based on theme
+      style: "dark", // or "light" based on theme
       backgroundColor: "#1a1a2e", // match app background
     },
     SplashScreen: {
@@ -875,14 +902,14 @@ export default config;
 
 ### Native Plugins Needed
 
-| Plugin | Purpose |
-|--------|---------|
-| `@capacitor/preferences` | Persist settings (replaces localStorage) |
-| `@capacitor/status-bar` | Control status bar color/style |
-| `@capacitor/splash-screen` | Launch screen |
-| `@capacitor/camera` | QR code scanning (with barcode detection) |
-| `@capacitor/haptics` | Haptic feedback on approval buttons |
-| `@capawesome/capacitor-mlkit-barcode-scanning` | Better QR scanning via ML Kit |
+| Plugin                                         | Purpose                                   |
+| ---------------------------------------------- | ----------------------------------------- |
+| `@capacitor/preferences`                       | Persist settings (replaces localStorage)  |
+| `@capacitor/status-bar`                        | Control status bar color/style            |
+| `@capacitor/splash-screen`                     | Launch screen                             |
+| `@capacitor/camera`                            | QR code scanning (with barcode detection) |
+| `@capacitor/haptics`                           | Haptic feedback on approval buttons       |
+| `@capawesome/capacitor-mlkit-barcode-scanning` | Better QR scanning via ML Kit             |
 
 ---
 
@@ -1085,12 +1112,12 @@ App.tsx
 
 ## Risk Mitigation
 
-| Risk | Mitigation |
-|------|-----------|
-| Piper WASM doesn't load in Capacitor WebView | Test early in Phase 2C-5. Fallback: browser SpeechSynthesis API |
-| WebSocket connection drops on mobile sleep | Reconnection logic in WsTransport (exponential backoff already built) |
-| Tailscale not reachable from phone | Show clear error with troubleshooting steps. Verify Tailscale app is active. |
-| Large message threads cause scroll jank | Limit initial load to last 50 messages, lazy-load older on scroll up |
-| Mixed content (HTTP over Tailscale) blocked | Capacitor `allowMixedContent: true` in config. Test early. |
-| Voice model download fails on mobile data | Show file size warning. Allow Wi-Fi-only download setting. |
-| Code highlighting is slow on mobile | Use lighter Shiki theme. Limit highlighting to first 200 lines per block. |
+| Risk                                         | Mitigation                                                                   |
+| -------------------------------------------- | ---------------------------------------------------------------------------- |
+| Piper WASM doesn't load in Capacitor WebView | Test early in Phase 2C-5. Fallback: browser SpeechSynthesis API              |
+| WebSocket connection drops on mobile sleep   | Reconnection logic in WsTransport (exponential backoff already built)        |
+| Tailscale not reachable from phone           | Show clear error with troubleshooting steps. Verify Tailscale app is active. |
+| Large message threads cause scroll jank      | Limit initial load to last 50 messages, lazy-load older on scroll up         |
+| Mixed content (HTTP over Tailscale) blocked  | Capacitor `allowMixedContent: true` in config. Test early.                   |
+| Voice model download fails on mobile data    | Show file size warning. Allow Wi-Fi-only download setting.                   |
+| Code highlighting is slow on mobile          | Use lighter Shiki theme. Limit highlighting to first 200 lines per block.    |

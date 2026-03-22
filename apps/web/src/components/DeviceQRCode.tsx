@@ -69,12 +69,7 @@ export function DeviceQRCode({
         <>
           {/* QR Code */}
           <div className="flex items-center justify-center rounded-lg border border-border bg-white p-4">
-            <QRCodeSVG
-              value={connectionPayload}
-              size={180}
-              level="M"
-              marginSize={1}
-            />
+            <QRCodeSVG value={connectionPayload} size={180} level="M" marginSize={1} />
           </div>
 
           <p className="text-xs text-muted-foreground text-center">
@@ -127,9 +122,7 @@ export function DeviceQRCode({
               className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5"
             >
               <div className="size-1.5 rounded-full bg-muted-foreground/30" />
-              <span className="flex-1 text-xs text-foreground truncate">
-                {device.deviceName}
-              </span>
+              <span className="flex-1 text-xs text-foreground truncate">{device.deviceName}</span>
               <span className="text-[10px] text-muted-foreground">
                 paired {formatLastSeen(device.pairedAt)}
               </span>

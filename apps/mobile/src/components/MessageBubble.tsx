@@ -50,9 +50,7 @@ export const MessageBubble = memo(function MessageBubble({
     return (
       <div className="flex justify-end py-1">
         <div className="max-w-[80%] min-w-0 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3">
-          <div className="message-content whitespace-pre-wrap text-sm text-foreground">
-            {text}
-          </div>
+          <div className="message-content whitespace-pre-wrap text-sm text-foreground">{text}</div>
           <p className="mt-1.5 text-right text-[10px] text-muted-foreground/30">{time}</p>
         </div>
       </div>
@@ -65,7 +63,10 @@ export const MessageBubble = memo(function MessageBubble({
     <div className="min-w-0 max-w-full overflow-hidden px-1 py-1">
       {/* Content */}
       <div className="message-content min-w-0 max-w-full overflow-hidden">
-        <ChatMarkdown text={text || (streaming ? "" : "(empty response)")} isStreaming={streaming} />
+        <ChatMarkdown
+          text={text || (streaming ? "" : "(empty response)")}
+          isStreaming={streaming}
+        />
       </div>
 
       {/* Changed files */}
@@ -76,7 +77,10 @@ export const MessageBubble = memo(function MessageBubble({
           </p>
           <div className="flex flex-wrap gap-1.5">
             {changedFiles!.map((file) => (
-              <span key={file} className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              <span
+                key={file}
+                className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
+              >
                 {file.split("/").pop()}
               </span>
             ))}
@@ -87,10 +91,20 @@ export const MessageBubble = memo(function MessageBubble({
       {/* Work log */}
       {hasWorkLog && !streaming && (
         <div className="mt-1.5 rounded-lg border border-border/40 bg-muted/20">
-          <button onClick={() => setWorkLogOpen(!workLogOpen)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
-            <ChevronDown className={cn("size-3 text-muted-foreground transition-transform", workLogOpen && "rotate-180")} />
+          <button
+            onClick={() => setWorkLogOpen(!workLogOpen)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left"
+          >
+            <ChevronDown
+              className={cn(
+                "size-3 text-muted-foreground transition-transform",
+                workLogOpen && "rotate-180",
+              )}
+            />
             <span className="text-xs font-medium text-muted-foreground">Work log</span>
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{toolActivities.length}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {toolActivities.length}
+            </span>
           </button>
           {workLogOpen && (
             <div className="flex flex-col border-t border-border/30 px-3 py-1">
@@ -107,14 +121,23 @@ export const MessageBubble = memo(function MessageBubble({
       {/* Actions row */}
       {!streaming && (
         <div className="mt-1.5 flex items-center gap-1">
-          <button onClick={handleCopy} className="flex size-7 items-center justify-center rounded-md active:bg-muted">
+          <button
+            onClick={handleCopy}
+            className="flex size-7 items-center justify-center rounded-md active:bg-muted"
+          >
             <Copy className="size-3.5 text-muted-foreground" />
           </button>
           <ReadAloudButton content={text} />
           {elapsedMs != null && (
-            <span className="ml-auto text-[10px] text-muted-foreground/30">{(elapsedMs / 1000).toFixed(1)}s</span>
+            <span className="ml-auto text-[10px] text-muted-foreground/30">
+              {(elapsedMs / 1000).toFixed(1)}s
+            </span>
           )}
-          <span className={cn("text-[10px] text-muted-foreground/30", elapsedMs == null && "ml-auto")}>{time}</span>
+          <span
+            className={cn("text-[10px] text-muted-foreground/30", elapsedMs == null && "ml-auto")}
+          >
+            {time}
+          </span>
         </div>
       )}
     </div>

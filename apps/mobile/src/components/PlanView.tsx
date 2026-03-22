@@ -30,9 +30,7 @@ export const PlanView = memo(function PlanView({ plan }: PlanViewProps) {
       >
         <FileText className="size-4 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
-          <span className="truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
+          <span className="truncate text-sm font-medium text-foreground">{title}</span>
           {plan.implementedAt && (
             <span className="ml-2 text-[10px] font-medium text-success-foreground">
               Implemented

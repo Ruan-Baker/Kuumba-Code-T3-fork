@@ -49,9 +49,10 @@ function ChatRouteGlobalShortcuts() {
       if (event.key === "P" && (event.ctrlKey || event.metaKey) && event.shiftKey) {
         event.preventDefault();
         event.stopPropagation();
-        const project = projects.find(
-          (p) => p.id === (activeThread?.projectId ?? activeDraftThread?.projectId),
-        ) ?? projects[0];
+        const project =
+          projects.find(
+            (p) => p.id === (activeThread?.projectId ?? activeDraftThread?.projectId),
+          ) ?? projects[0];
         if (project) {
           useNotesFloatingStore.getState().toggle(project.cwd, project.name);
         }

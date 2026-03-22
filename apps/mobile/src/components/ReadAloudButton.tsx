@@ -6,9 +6,7 @@ interface ReadAloudButtonProps {
   content: string;
 }
 
-export const ReadAloudButton = memo(function ReadAloudButton({
-  content,
-}: ReadAloudButtonProps) {
+export const ReadAloudButton = memo(function ReadAloudButton({ content }: ReadAloudButtonProps) {
   const { status, speed, isSpeaking, isLoading, toggle, cycleSpeed } = useTTS();
 
   const hasError = status.state === "error";

@@ -54,18 +54,13 @@ export const useSettingsStore = create<SettingsState>()(
             if (existing) return state; // Already saved
           }
           return {
-            savedDevices: [
-              ...state.savedDevices,
-              { ...device, id: generateId() },
-            ],
+            savedDevices: [...state.savedDevices, { ...device, id: generateId() }],
           };
         }),
 
       updateDevice: (id, updates) =>
         set((state) => ({
-          savedDevices: state.savedDevices.map((d) =>
-            d.id === id ? { ...d, ...updates } : d,
-          ),
+          savedDevices: state.savedDevices.map((d) => (d.id === id ? { ...d, ...updates } : d)),
         })),
 
       removeDevice: (id) =>

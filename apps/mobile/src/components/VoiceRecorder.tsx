@@ -49,7 +49,12 @@ function WaveformVisualizer({ getAnalyser }: { getAnalyser: () => AnalyserNode |
   return <canvas ref={canvasRef} className="h-full w-full" style={{ display: "block" }} />;
 }
 
-function drawBars(ctx: CanvasRenderingContext2D, width: number, height: number, data: Uint8Array | null) {
+function drawBars(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  data: Uint8Array | null,
+) {
   const barCount = 48;
   const gap = 2.5;
   const barWidth = (width - gap * (barCount - 1)) / barCount;
@@ -101,7 +106,8 @@ export const VoiceRecorder = memo(function VoiceRecorder({
   projectContext,
   onTranscript,
 }: VoiceRecorderProps) {
-  const { state, startRecording, stopRecording, cancel, getAnalyser } = useVoiceInput(projectContext);
+  const { state, startRecording, stopRecording, cancel, getAnalyser } =
+    useVoiceInput(projectContext);
 
   const handleMicTap = useCallback(async () => {
     if (state.phase === "idle") {

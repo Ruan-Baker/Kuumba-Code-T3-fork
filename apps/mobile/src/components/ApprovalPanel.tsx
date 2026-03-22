@@ -18,19 +18,13 @@ export function ApprovalPanel({
   onDecline,
 }: ApprovalPanelProps) {
   const label =
-    type === "command"
-      ? "Run command"
-      : type === "file-read"
-        ? "Read file"
-        : "Edit file";
+    type === "command" ? "Run command" : type === "file-read" ? "Read file" : "Edit file";
 
   return (
     <div className="flex flex-col gap-2 p-3.5">
       <div className="flex items-center gap-1.5">
         <Terminal className="size-3.5 text-warning" />
-        <span className="text-[13px] font-medium text-foreground">
-          {label}
-        </span>
+        <span className="text-[13px] font-medium text-foreground">{label}</span>
         {pendingCount > 1 && (
           <span className="ml-auto text-[11px] text-muted-foreground">
             {currentIndex + 1} of {pendingCount}

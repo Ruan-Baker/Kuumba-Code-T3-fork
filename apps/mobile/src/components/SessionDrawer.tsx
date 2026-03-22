@@ -63,10 +63,7 @@ export function SessionDrawer({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Drawer */}
       <div className="relative flex max-h-[70vh] flex-col rounded-t-2xl border-t border-border bg-background">
@@ -77,9 +74,7 @@ export function SessionDrawer({
 
         {/* Title */}
         <div className="flex items-center justify-between px-5 pb-3.5 pt-1">
-          <span className="text-base font-semibold text-foreground">
-            Sessions
-          </span>
+          <span className="text-base font-semibold text-foreground">Sessions</span>
           <div className="flex items-center gap-2">
             <Link
               to="/connect"
@@ -101,14 +96,8 @@ export function SessionDrawer({
         <div className="flex-1 overflow-y-auto px-4 pb-8">
           {devices.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <span className="text-sm text-muted-foreground">
-                No devices connected
-              </span>
-              <Link
-                to="/connect"
-                onClick={onClose}
-                className="text-sm font-medium text-primary"
-              >
+              <span className="text-sm text-muted-foreground">No devices connected</span>
+              <Link to="/connect" onClick={onClose} className="text-sm font-medium text-primary">
                 Add your first device
               </Link>
             </div>
@@ -127,9 +116,7 @@ export function SessionDrawer({
                     {device.deviceName}
                   </span>
                   {!device.online && (
-                    <span className="text-[11px] text-muted-foreground/60">
-                      Offline
-                    </span>
+                    <span className="text-[11px] text-muted-foreground/60">Offline</span>
                   )}
                 </div>
 

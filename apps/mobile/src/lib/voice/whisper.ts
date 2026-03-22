@@ -41,11 +41,7 @@ export async function loadWhisperModel(onProgress?: ProgressCallback): Promise<v
     if (onProgress) {
       opts.progress_callback = onProgress;
     }
-    pipeline = await createPipeline(
-      "automatic-speech-recognition",
-      MODEL_ID,
-      opts as any,
-    );
+    pipeline = await createPipeline("automatic-speech-recognition", MODEL_ID, opts as any);
 
     markWhisperCached();
   } finally {
@@ -63,9 +59,10 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   const audioData = audioBuffer.getChannelData(0); // mono
 
   // Resample to 16kHz if needed (Whisper expects 16kHz)
-  const resampled = audioBuffer.sampleRate !== 16000
-    ? resample(audioData, audioBuffer.sampleRate, 16000)
-    : audioData;
+  const resampled =
+    audioBuffer.sampleRate !== 16000
+      ? resample(audioData, audioBuffer.sampleRate, 16000)
+      : audioData;
 
   const result = await pipeline(resampled, {
     language: "en",
@@ -106,7 +103,8 @@ function resample(data: Float32Array, fromRate: number, toRate: number): Float32
  */
 export function transcribeWithWebSpeech(timeoutMs: number = 30000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       reject(new Error("Speech recognition not supported"));
       return;

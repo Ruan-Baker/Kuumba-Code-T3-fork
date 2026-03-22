@@ -10,10 +10,7 @@ import {
 
 export type CalloutType = "info" | "warning" | "success";
 
-type SerializedCalloutNode = Spread<
-  { calloutType: CalloutType },
-  SerializedElementNode
->;
+type SerializedCalloutNode = Spread<{ calloutType: CalloutType }, SerializedElementNode>;
 
 const CALLOUT_STYLES: Record<CalloutType, string> = {
   info: "border-l-[3px] border-blue-400 bg-blue-400/10 rounded-r-md px-3 py-2 my-2",

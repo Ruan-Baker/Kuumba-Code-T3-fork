@@ -31,6 +31,7 @@ docker run -d \
 ```
 
 View logs:
+
 ```bash
 docker logs -f kuumba-relay
 ```
@@ -38,6 +39,7 @@ docker logs -f kuumba-relay
 ## VPS Setup (DigitalOcean $5 Droplet)
 
 ### Prerequisites
+
 - Ubuntu 24.04 droplet (4GB RAM, 2 vCPU recommended)
 - Root SSH access
 - Domain name pointing to VPS IP
@@ -45,11 +47,13 @@ docker logs -f kuumba-relay
 ### Installation
 
 1. **Create and connect to droplet**
+
    ```bash
    ssh root@your-vps-ip
    ```
 
 2. **Install Node.js 22**
+
    ```bash
    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
    sudo apt-get update
@@ -57,6 +61,7 @@ docker logs -f kuumba-relay
    ```
 
 3. **Clone repo (or copy relay files)**
+
    ```bash
    cd /opt
    git clone https://github.com/yourusername/kuumba-code.git
@@ -67,6 +72,7 @@ docker logs -f kuumba-relay
 4. **Set up systemd service**
 
    Create `/etc/systemd/system/kuumba-relay.service`:
+
    ```ini
    [Unit]
    Description=Kuumba Code Relay Server
@@ -86,6 +92,7 @@ docker logs -f kuumba-relay
    ```
 
    Enable and start:
+
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable kuumba-relay
@@ -94,6 +101,7 @@ docker logs -f kuumba-relay
    ```
 
    View logs:
+
    ```bash
    sudo journalctl -u kuumba-relay -f
    ```
@@ -145,6 +153,7 @@ server {
 ```
 
 Enable the site:
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/relay.kuumbacode.com /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -166,13 +175,15 @@ curl https://relay.kuumbacode.com/health
 ```
 
 Expected response:
+
 ```json
-{"status":"ok","devices":0,"pairings":0}
+{ "status": "ok", "devices": 0, "pairings": 0 }
 ```
 
 ### 4. Auto-Renew Certificates
 
 Certbot sets up auto-renewal by default. Verify:
+
 ```bash
 sudo certbot renew --dry-run
 ```
@@ -182,6 +193,7 @@ sudo certbot renew --dry-run
 Point your domain to the VPS:
 
 1. Get your VPS's public IP:
+
    ```bash
    curl ifconfig.me
    ```
@@ -199,11 +211,12 @@ Point your domain to the VPS:
 
 ### Environment Variables
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `RELAY_PORT` | `4400` | Port the relay listens on |
+| Variable     | Default | Description               |
+| ------------ | ------- | ------------------------- |
+| `RELAY_PORT` | `4400`  | Port the relay listens on |
 
 Example:
+
 ```bash
 RELAY_PORT=5000 npm start
 ```
@@ -215,6 +228,7 @@ The relay exposes a health endpoint for monitoring:
 **Endpoint**: `GET /health`
 
 **Response**:
+
 ```json
 {
   "status": "ok",
@@ -235,18 +249,22 @@ Use this for uptime monitoring services (Uptimerobot, Grafana, etc.).
 ## Troubleshooting
 
 ### High CPU usage
+
 - Check `journalctl -u kuumba-relay` for errors
 - Verify Nginx proxy settings include proper timeouts
 
 ### Connection refused
+
 - Ensure port 4400 is open: `sudo ufw allow 4400`
 - Check firewall rules on your VPS provider
 
 ### SSL certificate errors
+
 - Verify domain is pointing to VPS: `nslookup relay.kuumbacode.com`
 - Check Certbot logs: `sudo certbot renew -v`
 
 ### Device disconnections
+
 - May be due to rate limiting. Check client IP in logs.
 - Verify proxy `X-Forwarded-For` header is set correctly in Nginx.
 

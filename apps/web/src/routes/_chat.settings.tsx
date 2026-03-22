@@ -26,9 +26,24 @@ import {
   getDesktopUpdateStatusMessage,
 } from "../components/desktopUpdate.logic";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { PencilIcon, PlusIcon, TrashIcon, MonitorIcon, CopyIcon, CheckIcon, EyeIcon, EyeOffIcon, Download, Volume2 } from "lucide-react";
+import {
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+  MonitorIcon,
+  CopyIcon,
+  CheckIcon,
+  EyeIcon,
+  EyeOffIcon,
+  Download,
+  Volume2,
+} from "lucide-react";
 import { DeviceQRCode } from "~/components/DeviceQRCode";
-import { isKokoroCached, deleteKokoroCache, downloadModel as downloadKokoro } from "~/lib/tts/tts-engine";
+import {
+  isKokoroCached,
+  deleteKokoroCache,
+  downloadModel as downloadKokoro,
+} from "~/lib/tts/tts-engine";
 import type { RemoteDeviceConfig } from "~/appSettings";
 import { useRelay } from "~/lib/useRelayConnection";
 
@@ -291,7 +306,6 @@ function RemoteDevicesSettings({
             Add remote device
           </Button>
         )}
-
       </div>
     </section>
   );
@@ -339,7 +353,7 @@ function ThisDeviceSettings({
   useEffect(() => {
     const interval = setInterval(() => {
       const current = getOrCreateDeviceId();
-      setDeviceId((prev) => prev !== current ? current : prev);
+      setDeviceId((prev) => (prev !== current ? current : prev));
     }, 2000);
     return () => clearInterval(interval);
   }, []);
@@ -370,7 +384,9 @@ function ThisDeviceSettings({
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-foreground">This Device</h2>
           <div className="flex items-center gap-1.5">
-            <div className={`size-2 rounded-full ${relay.connected ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+            <div
+              className={`size-2 rounded-full ${relay.connected ? "bg-green-500" : "bg-muted-foreground/30"}`}
+            />
             <span className="text-[11px] text-muted-foreground">
               {relay.connected ? "Connected to relay" : "Not connected"}
             </span>

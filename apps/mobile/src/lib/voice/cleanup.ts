@@ -21,14 +21,16 @@ export async function cleanupTranscript(
     "Do not add punctuation that wasn't implied. Do not change the structure.",
     "If the text is already correct, return it as-is.",
     projectContext ? `The developer is working on a project called "${projectContext}".` : "",
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": "https://kuumba.code",
         "X-Title": "Kuumba Code Mobile",
       },
@@ -49,7 +51,7 @@ export async function cleanupTranscript(
       return rawText; // Fallback to raw
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
 

@@ -49,9 +49,7 @@ export const TurnDiffSummary = memo(function TurnDiffSummary({ files }: TurnDiff
         <span className="flex-1 text-xs font-medium text-foreground">
           {files.length} file{files.length !== 1 ? "s" : ""} changed
         </span>
-        <span className="text-[11px] font-medium text-success-foreground">
-          +{totalAdditions}
-        </span>
+        <span className="text-[11px] font-medium text-success-foreground">+{totalAdditions}</span>
         <span className="text-[11px] text-muted-foreground">/</span>
         <span className="text-[11px] font-medium text-destructive-foreground">
           -{totalDeletions}
@@ -74,10 +72,7 @@ export const TurnDiffSummary = memo(function TurnDiffSummary({ files }: TurnDiff
                 return (
                   <div
                     key={file.path}
-                    className={cn(
-                      "flex items-center gap-1.5 py-1",
-                      dir !== "." && "pl-4",
-                    )}
+                    className={cn("flex items-center gap-1.5 py-1", dir !== "." && "pl-4")}
                   >
                     <FileIcon className="size-3 text-muted-foreground/40" />
                     <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">

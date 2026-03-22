@@ -93,8 +93,17 @@ export interface RelayConfig {
   onDevicesChanged?: ((devices: PairedDevice[]) => void) | undefined;
   onConnected?: (() => void) | undefined;
   onDisconnected?: (() => void) | undefined;
-  onModeSync?: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | undefined;
-  onNotesSync?: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | undefined;
+  onModeSync?:
+    | ((data: {
+        interactionMode?: string;
+        runtimeMode?: string;
+        model?: string;
+        reasoningLevel?: string;
+      }) => void)
+    | undefined;
+  onNotesSync?:
+    | ((data: { cwd: string; editorState: string; timestamp: number }) => void)
+    | undefined;
 }
 
 export class RelayTransport {
@@ -143,7 +152,12 @@ export class RelayTransport {
   async request<T = unknown>(method: string, params?: unknown): Promise<T> {
     const targetDevice = this.pairedDevices.get(this.config.targetDeviceId);
     if (!targetDevice) {
-      console.error("[Relay] request() — not paired with", this.config.targetDeviceId, "paired devices:", [...this.pairedDevices.keys()]);
+      console.error(
+        "[Relay] request() — not paired with",
+        this.config.targetDeviceId,
+        "paired devices:",
+        [...this.pairedDevices.keys()],
+      );
       throw new Error("Not paired with target device");
     }
 
@@ -191,10 +205,21 @@ export class RelayTransport {
   }
 
   /** Send a mode sync message to the paired desktop */
-  async sendModeSync(interactionMode: string, runtimeMode: string, model?: string, reasoningLevel?: string): Promise<void> {
+  async sendModeSync(
+    interactionMode: string,
+    runtimeMode: string,
+    model?: string,
+    reasoningLevel?: string,
+  ): Promise<void> {
     const peer = this.pairedDevices.get(this.config.targetDeviceId);
     if (!peer) return;
-    const msg = JSON.stringify({ type: "mode.sync", interactionMode, runtimeMode, model, reasoningLevel });
+    const msg = JSON.stringify({
+      type: "mode.sync",
+      interactionMode,
+      runtimeMode,
+      model,
+      reasoningLevel,
+    });
     const encrypted = await encrypt(peer.sharedKey, msg);
     this.sendRaw({ type: "forward", targetDeviceId: this.config.targetDeviceId, encrypted });
   }
@@ -374,8 +399,27 @@ export class RelayTransport {
 
       // Device status updates
       case "device-list": {
-        const m = msg as { devices: Array<{ deviceId: string; deviceName: string; online: boolean; sessions: RelaySessionInfo[] }> };
-        console.log("[Relay] Device list:", m.devices.length, "devices", JSON.stringify(m.devices.map(d => ({ id: d.deviceId, name: d.deviceName, online: d.online, sessions: d.sessions }))));
+        const m = msg as {
+          devices: Array<{
+            deviceId: string;
+            deviceName: string;
+            online: boolean;
+            sessions: RelaySessionInfo[];
+          }>;
+        };
+        console.log(
+          "[Relay] Device list:",
+          m.devices.length,
+          "devices",
+          JSON.stringify(
+            m.devices.map((d) => ({
+              id: d.deviceId,
+              name: d.deviceName,
+              online: d.online,
+              sessions: d.sessions,
+            })),
+          ),
+        );
         for (const device of m.devices) {
           const existing = this.pairedDevices.get(device.deviceId);
           if (existing) {
@@ -429,7 +473,10 @@ export class RelayTransport {
       return;
     }
 
-    console.log("[Relay] ← Decrypted message:", parsed.id ? `response id=${parsed.id}` : `type=${parsed.type}`);
+    console.log(
+      "[Relay] ← Decrypted message:",
+      parsed.id ? `response id=${parsed.id}` : `type=${parsed.type}`,
+    );
 
     // RPC response (has id field)
     if (typeof parsed.id === "string") {
@@ -441,7 +488,9 @@ export class RelayTransport {
       clearTimeout(pending.timeout);
       this.pending.delete(parsed.id);
       if (parsed.error && typeof parsed.error === "object" && parsed.error !== null) {
-        pending.reject(new Error((parsed.error as { message?: string }).message ?? "Request failed"));
+        pending.reject(
+          new Error((parsed.error as { message?: string }).message ?? "Request failed"),
+        );
       } else {
         pending.resolve(parsed.result);
       }
@@ -453,17 +502,31 @@ export class RelayTransport {
       // Handle composer state push from desktop
       if (parsed.channel === "composer.state-changed") {
         console.log("[Relay] Composer state changed from desktop:", parsed.data);
-        this.config.onModeSync?.(parsed.data as { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string });
+        this.config.onModeSync?.(
+          parsed.data as {
+            interactionMode?: string;
+            runtimeMode?: string;
+            model?: string;
+            reasoningLevel?: string;
+          },
+        );
         return;
       }
 
       // Handle notes sync push from desktop
       if (parsed.channel === "notes.sync") {
         console.log("[Relay] Notes sync from desktop");
-        this.config.onNotesSync?.(parsed.data as { cwd: string; editorState: string; timestamp: number });
+        this.config.onNotesSync?.(
+          parsed.data as { cwd: string; editorState: string; timestamp: number },
+        );
         return;
       }
-      console.log("[Relay] Push event: channel=", parsed.channel, "event type=", (parsed.data as any)?.type);
+      console.log(
+        "[Relay] Push event: channel=",
+        parsed.channel,
+        "event type=",
+        (parsed.data as any)?.type,
+      );
       const channelListeners = this.listeners.get(parsed.channel);
       if (channelListeners) {
         console.log("[Relay] Dispatching to", channelListeners.size, "listeners");
@@ -502,7 +565,13 @@ export class RelayTransport {
     this.notifyDebounceTimer = setTimeout(() => {
       this.notifyDebounceTimer = null;
       const devices = this.getPairedDevices();
-      console.log("[Relay] Devices changed:", devices.map((d) => `${d.deviceName}(${d.online ? "online" : "offline"}, ${d.sessions.length} sessions)`));
+      console.log(
+        "[Relay] Devices changed:",
+        devices.map(
+          (d) =>
+            `${d.deviceName}(${d.online ? "online" : "offline"}, ${d.sessions.length} sessions)`,
+        ),
+      );
       this.config.onDevicesChanged?.(devices);
     }, 300);
   }

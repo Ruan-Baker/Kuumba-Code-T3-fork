@@ -283,14 +283,15 @@ function RelayDeviceGroup({
                       className={`size-1.5 shrink-0 rounded-full ${statusColor(session.status)}`}
                     />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-xs">
-                        {session.title || "Untitled"}
-                      </span>
+                      <span className="truncate text-xs">{session.title || "Untitled"}</span>
                       <span className="truncate text-[10px] text-muted-foreground/60">
                         {session.projectName}
                       </span>
                     </span>
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none shrink-0">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1 py-0 h-4 leading-none shrink-0"
+                    >
                       {statusLabel(session.status)}
                     </Badge>
                   </SidebarMenuSubButton>
@@ -354,8 +355,7 @@ export function RemoteSessionsContent() {
 
   // All Tailscale devices online but none have shared sessions (only when no relay).
   const tailscaleAllOnlineNoSessions =
-    hasTailscaleDevices &&
-    statuses.every((s) => s.online && (s.info?.sessions ?? []).length === 0);
+    hasTailscaleDevices && statuses.every((s) => s.online && (s.info?.sessions ?? []).length === 0);
   const relayAllNoSessions =
     hasRelayUrl && pairedDevices.every((d) => !d.online || d.sessions.length === 0);
 
@@ -394,11 +394,7 @@ export function RemoteSessionsContent() {
           ) : (
             <SidebarMenu>
               {pairedDevices.map((device) => (
-                <RelayDeviceGroup
-                  key={device.deviceId}
-                  device={device}
-                  transport={transport!}
-                />
+                <RelayDeviceGroup key={device.deviceId} device={device} transport={transport!} />
               ))}
             </SidebarMenu>
           )}

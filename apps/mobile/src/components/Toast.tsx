@@ -27,7 +27,9 @@ export function ToastContainer() {
 
   useEffect(() => {
     addToastFn = addToast;
-    return () => { addToastFn = null; };
+    return () => {
+      addToastFn = null;
+    };
   }, [addToast]);
 
   if (toasts.length === 0) return null;
@@ -39,7 +41,8 @@ export function ToastContainer() {
           key={toast.id}
           className={cn(
             "pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-xl border px-4 py-3 shadow-lg",
-            toast.type === "error" && "border-destructive/20 bg-destructive/10 text-destructive-foreground",
+            toast.type === "error" &&
+              "border-destructive/20 bg-destructive/10 text-destructive-foreground",
             toast.type === "success" && "border-success/20 bg-success/10 text-success-foreground",
             toast.type === "info" && "border-border bg-card text-foreground",
           )}

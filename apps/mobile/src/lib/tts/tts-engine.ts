@@ -61,23 +61,31 @@ async function fetchChunkAudio(transport: Transport, text: string): Promise<Blob
 
 function playBlob(blob: Blob, onStatus?: StatusCallback): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (stopped) { resolve(); return; }
+    if (stopped) {
+      resolve();
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     currentAudio = audio;
     audio.playbackRate = currentSpeed;
 
     audio.onplay = () => onStatus?.({ state: "speaking" });
-    audio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; resolve(); };
-    audio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; reject(new Error("Playback failed")); };
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      resolve();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+      reject(new Error("Playback failed"));
+    };
     audio.play().catch(reject);
   });
 }
 
-export async function speak(
-  text: string,
-  onStatus?: StatusCallback | undefined,
-): Promise<void> {
+export async function speak(text: string, onStatus?: StatusCallback | undefined): Promise<void> {
   stop();
   stopped = false;
   if (!text.trim()) return;
@@ -161,6 +169,8 @@ export function getPlaybackRate(): PlaybackSpeed {
 }
 
 // No-ops — no local model on mobile
-export function isKokoroCached(): boolean { return false; }
+export function isKokoroCached(): boolean {
+  return false;
+}
 export function deleteKokoroCache(): void {}
 export async function downloadModel(_onStatus?: StatusCallback): Promise<void> {}

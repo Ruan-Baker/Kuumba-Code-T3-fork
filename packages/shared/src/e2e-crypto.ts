@@ -16,11 +16,9 @@ export interface EncryptedEnvelope {
 const cryptoImpl = globalThis.crypto;
 
 export async function generateKeyPair(): Promise<E2EKeyPair> {
-  const keyPair = await cryptoImpl.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveKey"],
-  );
+  const keyPair = await cryptoImpl.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveKey",
+  ]);
   const publicKeyRaw = await cryptoImpl.subtle.exportKey("raw", keyPair.publicKey);
   const privateKeyPkcs8 = await cryptoImpl.subtle.exportKey("pkcs8", keyPair.privateKey);
   return {
@@ -56,34 +54,20 @@ export async function deriveSharedKey(
   );
 }
 
-export async function encrypt(
-  sharedKey: CryptoKey,
-  plaintext: string,
-): Promise<EncryptedEnvelope> {
+export async function encrypt(sharedKey: CryptoKey, plaintext: string): Promise<EncryptedEnvelope> {
   const iv = cryptoImpl.getRandomValues(new Uint8Array(IV_LENGTH));
   const encoded = new TextEncoder().encode(plaintext);
-  const ciphertext = await cryptoImpl.subtle.encrypt(
-    { name: ALGO, iv },
-    sharedKey,
-    encoded,
-  );
+  const ciphertext = await cryptoImpl.subtle.encrypt({ name: ALGO, iv }, sharedKey, encoded);
   return {
     iv: bufferToBase64(iv.buffer),
     data: bufferToBase64(ciphertext),
   };
 }
 
-export async function decrypt(
-  sharedKey: CryptoKey,
-  envelope: EncryptedEnvelope,
-): Promise<string> {
+export async function decrypt(sharedKey: CryptoKey, envelope: EncryptedEnvelope): Promise<string> {
   const iv = base64ToBuffer(envelope.iv);
   const ciphertext = base64ToBuffer(envelope.data);
-  const plaintext = await cryptoImpl.subtle.decrypt(
-    { name: ALGO, iv },
-    sharedKey,
-    ciphertext,
-  );
+  const plaintext = await cryptoImpl.subtle.decrypt({ name: ALGO, iv }, sharedKey, ciphertext);
   return new TextDecoder().decode(plaintext);
 }
 

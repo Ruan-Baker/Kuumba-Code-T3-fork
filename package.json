@@ -52,6 +52,12 @@
     "dev:relay": "cd apps/relay && node --watch src/index.ts",
     "start:relay": "cd apps/relay && node src/index.ts"
   },
+  "dependencies": {
+    "@noble/ciphers": "^2.1.1",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "prismjs": "^1.30.0"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "oxfmt": "^0.40.0",
@@ -75,12 +81,6 @@
     "workerDirectory": [
       "apps/web/public"
     ]
-  },
-  "dependencies": {
-    "@noble/ciphers": "^2.1.1",
-    "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1",
-    "prismjs": "^1.30.0"
   },
   "trustedDependencies": [
     "onnxruntime-node"

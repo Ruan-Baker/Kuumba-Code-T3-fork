@@ -8,16 +8,8 @@ interface ReadAloudButtonProps {
 }
 
 export const ReadAloudButton = memo(function ReadAloudButton({ content }: ReadAloudButtonProps) {
-  const {
-    status,
-    speed,
-    isSpeaking,
-    isLoading,
-    needsDownload,
-    toggle,
-    cycleSpeed,
-    downloadModel,
-  } = useTTS();
+  const { status, speed, isSpeaking, isLoading, needsDownload, toggle, cycleSpeed, downloadModel } =
+    useTTS();
 
   const hasError = status.state === "error";
   const isActive = isSpeaking || isLoading;
@@ -32,7 +24,9 @@ export const ReadAloudButton = memo(function ReadAloudButton({ content }: ReadAl
             <>
               <Download className="size-4 shrink-0 text-primary" />
               <span className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-foreground">Downloading voice engine</span>
+                <span className="text-xs font-medium text-foreground">
+                  Downloading voice engine
+                </span>
                 <span className="flex items-center gap-2">
                   <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                     <span

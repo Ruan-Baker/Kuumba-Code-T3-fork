@@ -118,7 +118,9 @@ export function Composer({
         onChange={handleFileChange}
       />
 
-      <div className={cn("rounded-[22px] p-px", isUltrathink ? "ultrathink-frame" : "bg-border/60")}>
+      <div
+        className={cn("rounded-[22px] p-px", isUltrathink ? "ultrathink-frame" : "bg-border/60")}
+      >
         <div className="relative rounded-[20px] border border-border bg-card">
           {/* Approval panel slot */}
           {approvalPanel && (
@@ -131,8 +133,15 @@ export function Composer({
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 px-3 pt-3">
               {images.map((img) => (
-                <div key={img.id} className="relative size-16 overflow-hidden rounded-lg border border-border/80 bg-background">
-                  <img src={img.previewUrl} alt={img.file.name} className="size-full object-cover" />
+                <div
+                  key={img.id}
+                  className="relative size-16 overflow-hidden rounded-lg border border-border/80 bg-background"
+                >
+                  <img
+                    src={img.previewUrl}
+                    alt={img.file.name}
+                    className="size-full object-cover"
+                  />
                   <button
                     onClick={() => removeImage(img.id)}
                     className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-background/90"
@@ -189,7 +198,7 @@ export function Composer({
               <VoiceRecorder
                 disabled={disabled}
                 projectContext={projectContext}
-                onTranscript={(t) => setText((prev) => prev ? prev + " " + t : t)}
+                onTranscript={(t) => setText((prev) => (prev ? prev + " " + t : t))}
               />
 
               {isWorking ? (
@@ -208,7 +217,12 @@ export function Composer({
                     canSend ? "bg-primary active:bg-primary/90" : "bg-muted",
                   )}
                 >
-                  <ArrowUp className={cn("size-4", canSend ? "text-primary-foreground" : "text-muted-foreground/50")} />
+                  <ArrowUp
+                    className={cn(
+                      "size-4",
+                      canSend ? "text-primary-foreground" : "text-muted-foreground/50",
+                    )}
+                  />
                 </button>
               )}
             </div>

@@ -25,7 +25,6 @@ export const notesTheme: EditorThemeClasses = {
       listitem: "list-none",
     },
   },
-  quote:
-    "border-l-[3px] border-primary/40 pl-3 my-2 text-muted-foreground italic",
+  quote: "border-l-[3px] border-primary/40 pl-3 my-2 text-muted-foreground italic",
   paragraph: "my-0",
 };

@@ -56,9 +56,8 @@ export function NotesToolbarPlugin({ size = "compact" }: ToolbarProps) {
         setActiveFormats(formats);
 
         const anchorNode = selection.anchor.getNode();
-        const element = anchorNode.getKey() === "root"
-          ? anchorNode
-          : anchorNode.getTopLevelElementOrThrow();
+        const element =
+          anchorNode.getKey() === "root" ? anchorNode : anchorNode.getTopLevelElementOrThrow();
 
         if ($isHeadingNode(element)) {
           setBlockType(element.getTag());
@@ -136,46 +135,96 @@ export function NotesToolbarPlugin({ size = "compact" }: ToolbarProps) {
   return (
     <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border/50 bg-muted/20 shrink-0 overflow-x-auto">
       {/* Inline formatting */}
-      <button type="button" className={btn(activeFormats.has("bold"))} onClick={() => formatText("bold")} title="Bold (Ctrl+B)">
+      <button
+        type="button"
+        className={btn(activeFormats.has("bold"))}
+        onClick={() => formatText("bold")}
+        title="Bold (Ctrl+B)"
+      >
         <BoldIcon className={iconSize} />
       </button>
-      <button type="button" className={btn(activeFormats.has("italic"))} onClick={() => formatText("italic")} title="Italic (Ctrl+I)">
+      <button
+        type="button"
+        className={btn(activeFormats.has("italic"))}
+        onClick={() => formatText("italic")}
+        title="Italic (Ctrl+I)"
+      >
         <ItalicIcon className={iconSize} />
       </button>
-      <button type="button" className={btn(activeFormats.has("underline"))} onClick={() => formatText("underline")} title="Underline (Ctrl+U)">
+      <button
+        type="button"
+        className={btn(activeFormats.has("underline"))}
+        onClick={() => formatText("underline")}
+        title="Underline (Ctrl+U)"
+      >
         <UnderlineIcon className={iconSize} />
       </button>
-      <button type="button" className={btn(activeFormats.has("strikethrough"))} onClick={() => formatText("strikethrough")} title="Strikethrough">
+      <button
+        type="button"
+        className={btn(activeFormats.has("strikethrough"))}
+        onClick={() => formatText("strikethrough")}
+        title="Strikethrough"
+      >
         <StrikethroughIcon className={iconSize} />
       </button>
 
       <div className="mx-1 h-4 w-px bg-border/50" />
 
       {/* Block types */}
-      <button type="button" className={btn(blockType === "h1")} onClick={() => formatHeading("h1")} title="Heading 1">
+      <button
+        type="button"
+        className={btn(blockType === "h1")}
+        onClick={() => formatHeading("h1")}
+        title="Heading 1"
+      >
         <Heading1Icon className={iconSize} />
       </button>
-      <button type="button" className={btn(blockType === "h2")} onClick={() => formatHeading("h2")} title="Heading 2">
+      <button
+        type="button"
+        className={btn(blockType === "h2")}
+        onClick={() => formatHeading("h2")}
+        title="Heading 2"
+      >
         <Heading2Icon className={iconSize} />
       </button>
 
       <div className="mx-1 h-4 w-px bg-border/50" />
 
       {/* Lists */}
-      <button type="button" className={btn(blockType === "ul" || blockType === "bullet")} onClick={() => insertList("ul")} title="Bullet list">
+      <button
+        type="button"
+        className={btn(blockType === "ul" || blockType === "bullet")}
+        onClick={() => insertList("ul")}
+        title="Bullet list"
+      >
         <ListIcon className={iconSize} />
       </button>
-      <button type="button" className={btn(blockType === "ol" || blockType === "number")} onClick={() => insertList("ol")} title="Numbered list">
+      <button
+        type="button"
+        className={btn(blockType === "ol" || blockType === "number")}
+        onClick={() => insertList("ol")}
+        title="Numbered list"
+      >
         <ListOrderedIcon className={iconSize} />
       </button>
-      <button type="button" className={btn(blockType === "check")} onClick={() => insertList("check")} title="Checkbox list">
+      <button
+        type="button"
+        className={btn(blockType === "check")}
+        onClick={() => insertList("check")}
+        title="Checkbox list"
+      >
         <ListChecksIcon className={iconSize} />
       </button>
 
       <div className="mx-1 h-4 w-px bg-border/50" />
 
       {/* Callout */}
-      <button type="button" className={btn(blockType === "callout")} onClick={() => insertCallout("info")} title="Callout block">
+      <button
+        type="button"
+        className={btn(blockType === "callout")}
+        onClick={() => insertCallout("info")}
+        title="Callout block"
+      >
         <MessageSquareQuoteIcon className={iconSize} />
       </button>
     </div>

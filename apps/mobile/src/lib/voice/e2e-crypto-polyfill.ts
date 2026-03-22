@@ -40,11 +40,9 @@ const isSecureContext =
 // --- Web Crypto (secure context) ---
 
 async function webGenerateKeyPair(): Promise<E2EKeyPair> {
-  const kp = await crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveKey"],
-  );
+  const kp = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveKey",
+  ]);
   const pub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
   const priv = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
   return {
@@ -84,11 +82,9 @@ async function webDeriveSharedKey(
 
 async function webEncrypt(key: CryptoKey, plaintext: string): Promise<EncryptedEnvelope> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    new TextEncoder().encode(plaintext),
-  ));
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext)),
+  );
   return { iv: bufferToBase64(iv), data: bufferToBase64(ct) };
 }
 
@@ -174,18 +170,12 @@ export async function deriveSharedKey(
   return { __noble: true, raw } as SharedKey;
 }
 
-export async function encrypt(
-  key: SharedKey,
-  plaintext: string,
-): Promise<EncryptedEnvelope> {
+export async function encrypt(key: SharedKey, plaintext: string): Promise<EncryptedEnvelope> {
   if (isNobleKey(key)) return nobleEncrypt(key.raw, plaintext);
   return webEncrypt(key as CryptoKey, plaintext);
 }
 
-export async function decrypt(
-  key: SharedKey,
-  envelope: EncryptedEnvelope,
-): Promise<string> {
+export async function decrypt(key: SharedKey, envelope: EncryptedEnvelope): Promise<string> {
   if (isNobleKey(key)) return nobleDecrypt(key.raw, envelope);
   return webDecrypt(key as CryptoKey, envelope);
 }

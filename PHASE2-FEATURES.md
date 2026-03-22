@@ -24,6 +24,7 @@ We're extending Kuumba Code with four connected features:
 Each project in the sidebar gets a notes button (alongside the existing "new thread" button) that appears on hover. Clicking it opens a floating popover anchored to the sidebar — not a full page, just a nice panel that floats over the main content.
 
 Inside the popover:
+
 - **Free-form text notes** — just type and it saves. Markdown or plain text, whichever is simpler.
 - **Checklist to-dos** — add items, check them off, reorder them. Think quick task list, not a project management tool.
 - **It's a scratch pad** — dump ideas, track what needs doing, jot down decisions. Nothing fancy.
@@ -31,6 +32,7 @@ Inside the popover:
 ### Where It Saves
 
 The notes save as a file inside the project repo itself — something like `.kuumbacode/notes.json` or `.kuumbacode/notes.md` in the project root. This means:
+
 - Notes travel with the project (git tracked if the user wants)
 - Opening the same project on another machine pulls the notes through
 - No external database needed
@@ -122,6 +124,7 @@ Simple email-based auth. You open Kuumba Code, enter your email, get a 6-digit c
 ### Simplification for Single User
 
 Since it's just Ruan (single user), the auth can be dead simple:
+
 - Hardcode the email as the only allowed user (env var: `ALLOWED_EMAIL=...`)
 - Convex stores active device sessions, not a full user system
 - No signup flow, no password, no OAuth — just email code
@@ -162,6 +165,7 @@ Do NOT wrap with Capacitor until the web app is fully working in the browser.
 ### Component Reuse Strategy
 
 Don't import from `apps/web/` directly (that creates coupling and build complexity). Instead:
+
 - Copy the shared components you need into `apps/mobile/src/components/`
 - Or better: extract truly shared components into a new `packages/ui/` shared package that both web and mobile import from
 - The TTS code (`lib/tts/`) can be shared directly — it's browser-based and Capacitor runs a real browser

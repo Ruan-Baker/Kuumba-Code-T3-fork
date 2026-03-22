@@ -4,11 +4,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    react(),
-    tanstackRouter({ routesDirectory: "src/routes" }),
-  ],
+  plugins: [tailwindcss(), react(), tanstackRouter({ routesDirectory: "src/routes" })],
   resolve: {
     tsconfigPaths: true,
   },

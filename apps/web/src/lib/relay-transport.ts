@@ -1,4 +1,10 @@
-import { generateKeyPair, deriveSharedKey, encrypt, decrypt, type E2EKeyPair } from "@t3tools/shared/e2e-crypto";
+import {
+  generateKeyPair,
+  deriveSharedKey,
+  encrypt,
+  decrypt,
+  type E2EKeyPair,
+} from "@t3tools/shared/e2e-crypto";
 import type {
   ClientToRelayMessage,
   RelayToClientMessage,
@@ -223,7 +229,10 @@ export class RelayTransport {
       case "forwarded": {
         const peer = this.pairedDevices.get(msg.fromDeviceId);
         if (!peer) {
-          console.warn(`[RelayTransport] Forwarded message from UNKNOWN device ${msg.fromDeviceId} — not in pairedDevices:`, [...this.pairedDevices.keys()]);
+          console.warn(
+            `[RelayTransport] Forwarded message from UNKNOWN device ${msg.fromDeviceId} — not in pairedDevices:`,
+            [...this.pairedDevices.keys()],
+          );
           break;
         }
         try {
@@ -236,7 +245,11 @@ export class RelayTransport {
           // Also call the global onMessage callback for any other consumers.
           this.config.onMessage?.(msg.fromDeviceId, msg.fromDeviceName, plaintext);
         } catch (err) {
-          console.error("[RelayTransport] Decryption failed for message from", msg.fromDeviceId, err);
+          console.error(
+            "[RelayTransport] Decryption failed for message from",
+            msg.fromDeviceId,
+            err,
+          );
         }
         break;
       }

@@ -46,7 +46,10 @@ export function ComposerMenu({
             icon={<ImagePlus className="size-4" />}
             label="Attach image"
             disabled={!hasSession}
-            onClick={() => { onAttachImage(); onClose(); }}
+            onClick={() => {
+              onAttachImage();
+              onClose();
+            }}
           />
 
           <div className="mx-3 h-px bg-border/50" />
@@ -55,33 +58,46 @@ export function ComposerMenu({
             icon={<Layers className="size-4" />}
             label="Select model"
             disabled={!hasSession}
-            onClick={() => { onSelectModel(); onClose(); }}
+            onClick={() => {
+              onSelectModel();
+              onClose();
+            }}
           />
 
           <div className="mx-3 h-px bg-border/50" />
 
           <MenuItem
-            icon={interactionMode === "chat"
-              ? <MessageSquare className="size-4" />
-              : <FileText className="size-4" />
+            icon={
+              interactionMode === "chat" ? (
+                <MessageSquare className="size-4" />
+              ) : (
+                <FileText className="size-4" />
+              )
             }
             label={interactionMode === "chat" ? "Chat mode" : "Plan mode"}
             active={interactionMode === "plan"}
             disabled={!hasSession}
-            onClick={() => { onToggleInteractionMode(); }}
+            onClick={() => {
+              onToggleInteractionMode();
+            }}
           />
 
           <div className="mx-3 h-px bg-border/50" />
 
           <MenuItem
-            icon={runtimeMode === "full-access"
-              ? <LockOpen className="size-4" />
-              : <Lock className="size-4" />
+            icon={
+              runtimeMode === "full-access" ? (
+                <LockOpen className="size-4" />
+              ) : (
+                <Lock className="size-4" />
+              )
             }
             label={runtimeMode === "full-access" ? "Full access" : "Supervised"}
             active={runtimeMode === "approval-required"}
             disabled={!hasSession}
-            onClick={() => { onToggleRuntimeMode(); }}
+            onClick={() => {
+              onToggleRuntimeMode();
+            }}
           />
         </div>
       </div>
@@ -107,9 +123,7 @@ function MenuItem({
       onClick={disabled ? undefined : onClick}
       className={cn(
         "flex items-center gap-2.5 px-3.5 py-2.5 text-left",
-        disabled
-          ? "opacity-35"
-          : "active:bg-muted",
+        disabled ? "opacity-35" : "active:bg-muted",
       )}
     >
       <span className="text-muted-foreground">{icon}</span>

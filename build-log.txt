@@ -1,0 +1,25 @@
+﻿bun : $ node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64
+At line:1 char:1
++ bun run dist:desktop:win 2>&1 | Out-File -FilePath build-log.txt -Enc ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ($ node scripts/...nsis --arch x64:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[17:11:48.612] INFO (#1): [desktop-artifact] Building desktop/server/web artifacts...
+(node:20388) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security 
+vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+$ turbo run build --filter=@t3tools/desktop --filter=t3
+ÔÇó turbo 2.8.17
+[17:11:49.092] INFO (#1): [desktop-artifact] Staging release app...
+[17:11:49.996] INFO (#1): [desktop-artifact] Installing staged production dependencies...
+Resolving dependencies
+Resolved, downloaded and extracted [205]
+[17:12:17.080] INFO (#1): [desktop-artifact] Building win/nsis (arch=x64, version=0.0.13)...
+[17:12:22.929] ERROR (#1): BuildScriptError: Command exited with non-zero exit code (1)
+    at file:///C:/Users/ruanb/OneDrive/hp-omen-code/Kuumba-Code-T3-fork/scripts/build-desktop-artifact.ts:266:19
+    at runCommand (file:///C:/Users/ruanb/OneDrive/hp-omen-code/Kuumba-Code-T3-fork/scripts/build-desktop-artifact.ts:688:10)
+    at runCommand (definition) (file:///C:/Users/ruanb/OneDrive/hp-omen-code/Kuumba-Code-T3-fork/scripts/build-desktop-artifact.ts:260:27)
+    at buildDesktopArtifact (file:///C:/Users/ruanb/OneDrive/hp-omen-code/Kuumba-Code-T3-fork/node_modules/.bun/effect@https+++pkg.pr.new+Effect-TS+effect-smol+effect@8881a9b/node_modules/effect/dist/internal/core.js:312:30)
+    at buildDesktopArtifact (definition) (file:///C:/Users/ruanb/OneDrive/hp-omen-code/Kuumba-Code-T3-fork/scripts/build-desktop-artifact.ts:515:37)
+error: script "dist:desktop:win" exited with code 1

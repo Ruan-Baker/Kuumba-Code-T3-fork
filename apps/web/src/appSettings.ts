@@ -60,7 +60,9 @@ export const AppSettingsSchema = Schema.Struct({
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
   tailscaleHostname: Schema.String.check(Schema.isMaxLength(512)).pipe(withDefaults(() => "")),
   remoteDevices: Schema.Array(RemoteDeviceConfigSchema).pipe(withDefaults(() => [])),
-  relayUrl: Schema.String.pipe(withDefaults(() => "wss://kuumba-relay-server-production.up.railway.app")),
+  relayUrl: Schema.String.pipe(
+    withDefaults(() => "wss://kuumba-relay-server-production.up.railway.app"),
+  ),
   devicePairingToken: Schema.String.pipe(withDefaults(() => "")),
   e2ePrivateKey: Schema.String.pipe(withDefaults(() => "")),
   e2ePublicKey: Schema.String.pipe(withDefaults(() => "")),

@@ -1,9 +1,5 @@
 import { WebSocket } from "ws";
-import type {
-  ClientToRelayMessage,
-  RelayToClientMessage,
-  RelaySessionInfo,
-} from "./types.js";
+import type { ClientToRelayMessage, RelayToClientMessage, RelaySessionInfo } from "./types.js";
 
 interface RegisteredDevice {
   deviceId: string;
@@ -53,7 +49,10 @@ export class Relay {
           break;
         case "pair-request":
           if (registeredDeviceId) this.handlePairRequest(registeredDeviceId, msg);
-          else console.log("[relay] Rejected pair-request: device not registered — must register first");
+          else
+            console.log(
+              "[relay] Rejected pair-request: device not registered — must register first",
+            );
           break;
         default:
           this.send(ws, { type: "error", message: "Unknown message type" });
@@ -103,7 +102,9 @@ export class Relay {
         }
       }
 
-      console.log(`[relay] Device re-registered (session update): ${msg.deviceName} (${msg.deviceId.slice(0, 8)}...)`);
+      console.log(
+        `[relay] Device re-registered (session update): ${msg.deviceName} (${msg.deviceId.slice(0, 8)}...)`,
+      );
       return msg.deviceId;
     }
 
@@ -169,17 +170,15 @@ export class Relay {
     const device = this.devices.get(deviceId);
     if (!device) return;
 
-    const devices = Array.from(device.pairedWith.entries()).map(
-      ([pairedId, info]) => {
-        const paired = this.devices.get(pairedId);
-        return {
-          deviceId: pairedId,
-          deviceName: info.deviceName,
-          online: paired !== undefined,
-          sessions: paired?.sessions ?? [],
-        };
-      },
-    );
+    const devices = Array.from(device.pairedWith.entries()).map(([pairedId, info]) => {
+      const paired = this.devices.get(pairedId);
+      return {
+        deviceId: pairedId,
+        deviceName: info.deviceName,
+        online: paired !== undefined,
+        sessions: paired?.sessions ?? [],
+      };
+    });
 
     this.send(device.ws, { type: "device-list", devices });
   }

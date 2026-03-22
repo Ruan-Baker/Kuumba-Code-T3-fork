@@ -484,13 +484,21 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
               try {
                 const { text } = JSON.parse(body) as { text?: string };
                 if (!text || typeof text !== "string" || text.trim().length === 0) {
-                  respond(400, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }, "Missing text field");
+                  respond(
+                    400,
+                    { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" },
+                    "Missing text field",
+                  );
                   return;
                 }
 
                 const { isTTSReady, synthesize } = await import("./ttsService.js");
                 if (!isTTSReady()) {
-                  respond(503, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }, "TTS model is still loading. Try again shortly.");
+                  respond(
+                    503,
+                    { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" },
+                    "TTS model is still loading. Try again shortly.",
+                  );
                   return;
                 }
 
@@ -507,7 +515,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
               } catch (err) {
                 const message = err instanceof Error ? err.message : "TTS synthesis failed";
                 console.warn("[tts] Endpoint error:", message);
-                respond(500, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }, message);
+                respond(
+                  500,
+                  { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" },
+                  message,
+                );
               }
             })();
           });

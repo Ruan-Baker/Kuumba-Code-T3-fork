@@ -32,13 +32,29 @@ export class RelayInboundBridge {
   };
 
   /** Callback when mobile sends composer.setState */
-  onComposerStateChanged: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | null = null;
+  onComposerStateChanged:
+    | ((data: {
+        interactionMode?: string;
+        runtimeMode?: string;
+        model?: string;
+        reasoningLevel?: string;
+      }) => void)
+    | null = null;
 
   /** Callback when mobile sends notes.sync */
-  onNotesSyncReceived: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | null = null;
+  onNotesSyncReceived:
+    | ((data: { cwd: string; editorState: string; timestamp: number }) => void)
+    | null = null;
 
   /** Callback to get live composer state from the desktop's ChatView */
-  getComposerStateLive: (() => { interactionMode: string; runtimeMode: string; model: string; reasoningLevel: string }) | null = null;
+  getComposerStateLive:
+    | (() => {
+        interactionMode: string;
+        runtimeMode: string;
+        model: string;
+        reasoningLevel: string;
+      })
+    | null = null;
 
   /** Local WebSocket for forwarding RPC and receiving push events */
   private localWs: WebSocket | null = null;
@@ -70,12 +86,16 @@ export class RelayInboundBridge {
       this.handleInboundMessage(deviceId, plaintext);
     });
     this.handlerCleanups.set(deviceId, cleanup);
-    console.log(`[inbound-bridge] Registered handler for mobile device: ${deviceId.slice(0, 8)}...`);
+    console.log(
+      `[inbound-bridge] Registered handler for mobile device: ${deviceId.slice(0, 8)}...`,
+    );
   }
 
   handleGlobalMessage(fromDeviceId: string, plaintext: string): void {
     if (this.activeMobileDevices.has(fromDeviceId)) return;
-    console.log(`[inbound-bridge] Auto-registering device ${fromDeviceId.slice(0, 8)}... from global onMessage`);
+    console.log(
+      `[inbound-bridge] Auto-registering device ${fromDeviceId.slice(0, 8)}... from global onMessage`,
+    );
     this.addMobileDevice(fromDeviceId);
     this.handleInboundMessage(fromDeviceId, plaintext);
   }
@@ -185,7 +205,9 @@ export class RelayInboundBridge {
           if (parsed.error) {
             console.warn(`[inbound-bridge] Server error for id=${parsed.id}:`, parsed.error);
           } else {
-            console.log(`[inbound-bridge] Forwarding response id=${parsed.id} to mobile ${mobileDeviceId.slice(0, 8)}...`);
+            console.log(
+              `[inbound-bridge] Forwarding response id=${parsed.id} to mobile ${mobileDeviceId.slice(0, 8)}...`,
+            );
           }
           void this.relay.sendToDevice(mobileDeviceId, raw).catch((err) => {
             console.warn(`[inbound-bridge] Failed to send response:`, err);
@@ -260,7 +282,11 @@ export class RelayInboundBridge {
       const data = body as { _tag: string; cwd?: string; editorState?: string; timestamp?: number };
       if (typeof data.cwd === "string" && typeof data.editorState === "string") {
         console.log("[inbound-bridge] notes.sync from mobile:", data.cwd);
-        this.onNotesSyncReceived?.({ cwd: data.cwd, editorState: data.editorState, timestamp: data.timestamp ?? Date.now() });
+        this.onNotesSyncReceived?.({
+          cwd: data.cwd,
+          editorState: data.editorState,
+          timestamp: data.timestamp ?? Date.now(),
+        });
       }
       const response = JSON.stringify({ id, result: { ok: true } });
       void this.relay.sendToDevice(fromDeviceId, response).catch(() => {});
@@ -282,7 +308,10 @@ export class RelayInboundBridge {
     } else {
       console.warn(`[inbound-bridge] Local server not connected, rejecting: ${body._tag}`);
       this.pendingRequests.delete(id);
-      const errorResponse = JSON.stringify({ id, error: { message: "Desktop server is not available" } });
+      const errorResponse = JSON.stringify({
+        id,
+        error: { message: "Desktop server is not available" },
+      });
       void this.relay.sendToDevice(fromDeviceId, errorResponse).catch(() => {});
     }
   }
@@ -294,7 +323,12 @@ export class RelayInboundBridge {
   ): Promise<void> {
     const text = body.text;
     if (typeof text !== "string" || !text.trim()) {
-      void this.relay.sendToDevice(fromDeviceId, JSON.stringify({ id: requestId, error: { message: "Missing text field" } })).catch(() => {});
+      void this.relay
+        .sendToDevice(
+          fromDeviceId,
+          JSON.stringify({ id: requestId, error: { message: "Missing text field" } }),
+        )
+        .catch(() => {});
       return;
     }
 
@@ -316,11 +350,20 @@ export class RelayInboundBridge {
       for (const byte of bytes) binary += String.fromCharCode(byte);
       const base64Audio = btoa(binary);
 
-      console.log(`[inbound-bridge] TTS response: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB WAV → base64 to mobile`);
-      void this.relay.sendToDevice(fromDeviceId, JSON.stringify({ id: requestId, result: { audio: base64Audio } })).catch(() => {});
+      console.log(
+        `[inbound-bridge] TTS response: ${(wavBuffer.byteLength / 1024).toFixed(0)}KB WAV → base64 to mobile`,
+      );
+      void this.relay
+        .sendToDevice(
+          fromDeviceId,
+          JSON.stringify({ id: requestId, result: { audio: base64Audio } }),
+        )
+        .catch(() => {});
     } catch (err) {
       const message = err instanceof Error ? err.message : "TTS synthesis failed";
-      void this.relay.sendToDevice(fromDeviceId, JSON.stringify({ id: requestId, error: { message } })).catch(() => {});
+      void this.relay
+        .sendToDevice(fromDeviceId, JSON.stringify({ id: requestId, error: { message } }))
+        .catch(() => {});
     }
   }
 

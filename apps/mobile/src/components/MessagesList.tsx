@@ -106,9 +106,7 @@ export function MessagesList({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4">
       {threadTitle && (
         <div className="flex items-center gap-2 pb-3 pt-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {threadTitle}
-          </span>
+          <span className="truncate text-sm font-medium text-foreground">{threadTitle}</span>
           {projectName && (
             <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               {projectName}
