@@ -1,4 +1,4 @@
-import { memo, useState, useId } from "react";
+import { memo, useState, useId, useCallback } from "react";
 import {
   buildCollapsedProposedPlanPreviewMarkdown,
   buildProposedPlanMarkdownFilename,
@@ -8,7 +8,7 @@ import {
   stripDisplayedPlanMarkdown,
 } from "../../proposedPlan";
 import ChatMarkdown from "../ChatMarkdown";
-import { EllipsisIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { EllipsisIcon, Volume2Icon, VolumeXIcon, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -40,9 +40,21 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState("");
   const [isSavingToWorkspace, setIsSavingToWorkspace] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const savePathInputId = useId();
-  const { isSpeaking, toggle: toggleTTS } = useTTS();
+  const { isSpeaking, isLoading, toggle: toggleTTS, stop: stopTTS } = useTTS();
   const title = proposedPlanTitle(planMarkdown) ?? "Proposed plan";
+  const ttsActive = isSpeaking || isLoading;
+
+  const handleTTSClick = useCallback(() => {
+    if (ttsActive) {
+      stopTTS();
+    } else {
+      setMenuOpen(false);
+      // Small delay to let the menu close before starting TTS
+      setTimeout(() => void toggleTTS(planMarkdown), 50);
+    }
+  }, [ttsActive, stopTTS, toggleTTS, planMarkdown]);
   const lineCount = planMarkdown.split("\n").length;
   const canCollapse = planMarkdown.length > 900 || lineCount > 20;
   const displayedPlanMarkdown = stripDisplayedPlanMarkdown(planMarkdown);
@@ -122,30 +134,42 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <Badge variant="secondary">Plan</Badge>
           <p className="truncate text-sm font-medium text-foreground">{title}</p>
         </div>
-        <Menu>
-          <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+        {ttsActive ? (
+          <Button
+            aria-label={isSpeaking ? "Stop reading" : "Loading voice..."}
+            size="icon-xs"
+            variant="outline"
+            onClick={handleTTSClick}
+            className={cn(
+              isSpeaking && "text-primary border-primary/30",
+              isLoading && "cursor-wait",
+            )}
+            disabled={isLoading}
           >
-            <EllipsisIcon aria-hidden="true" className="size-4" />
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
-            <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
-              Save to workspace
-            </MenuItem>
-            <MenuItem onClick={() => void toggleTTS(planMarkdown)}>
-              {isSpeaking ? (
-                <>
-                  <VolumeXIcon className="size-4" /> Stop reading
-                </>
-              ) : (
-                <>
-                  <Volume2Icon className="size-4" /> Read plan aloud
-                </>
-              )}
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
+            {isLoading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <VolumeXIcon className="size-4" />
+            )}
+          </Button>
+        ) : (
+          <Menu open={menuOpen} onOpenChange={setMenuOpen}>
+            <MenuTrigger
+              render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+            >
+              <EllipsisIcon aria-hidden="true" className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+              <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
+                Save to workspace
+              </MenuItem>
+              <MenuItem closeOnClick={false} onClick={handleTTSClick}>
+                <Volume2Icon className="size-4" /> Read plan aloud
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
+        )}
       </div>
       <div className="mt-4">
         <div className={cn("relative", canCollapse && !expanded && "max-h-104 overflow-hidden")}>
