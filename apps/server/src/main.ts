@@ -326,7 +326,7 @@ const makeServerProgram = (input: CliInput) =>
 
     // Initialize TTS model in the background (non-blocking)
     import("./ttsService.js")
-      .then(({ initTTS }) => void initTTS())
+      .then(({ initTTS }) => void initTTS(config.stateDir))
       .catch((err) => console.warn("[tts] Failed to import TTS service:", err));
 
     if (!config.noBrowser) {

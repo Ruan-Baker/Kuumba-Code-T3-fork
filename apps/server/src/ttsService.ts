@@ -5,6 +5,9 @@
  * Synthesis is fast (~100-500ms per sentence on CPU).
  */
 
+import path from "node:path";
+import os from "node:os";
+
 const VOICE_ID = "bf_emma";
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
@@ -15,8 +18,11 @@ let loadError: string | null = null;
 /**
  * Initialize the Kokoro TTS model. Call this at server startup.
  * Runs in the background — doesn't block the server from starting.
+ *
+ * @param cacheDir — writable directory for model cache (e.g. stateDir).
+ *   Falls back to ~/.kuumba/tts-cache if not provided.
  */
-export async function initTTS(): Promise<void> {
+export async function initTTS(cacheDir?: string): Promise<void> {
   if (tts || loading) return;
   loading = true;
 
@@ -25,7 +31,29 @@ export async function initTTS(): Promise<void> {
     const startTime = Date.now();
 
     // Dynamic import so it doesn't block server startup if missing
-    const { KokoroTTS } = await import("kokoro-js");
+    const kokoroModule = await import("kokoro-js");
+    const { KokoroTTS } = kokoroModule;
+
+    // Point the HuggingFace cache to a writable directory.
+    // In packaged Electron builds the default cache (relative to the module
+    // inside the asar archive) is read-only, so downloads silently fail.
+    const ttsCacheDir = cacheDir
+      ? path.join(cacheDir, "tts-cache")
+      : path.join(os.homedir(), ".kuumba", "tts-cache");
+
+    // kokoro-js re-exports @huggingface/transformers env — set cache paths
+    // before loading the model so files go to a writable location.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const hfModule = await import("@huggingface/transformers" as string);
+      if (hfModule?.env) {
+        hfModule.env.cacheDir = ttsCacheDir;
+        hfModule.env.localModelPath = ttsCacheDir;
+      }
+    } catch {
+      // If direct import fails, the module may still work via kokoro-js internals
+    }
+    console.log(`[tts] Model cache directory: ${ttsCacheDir}`);
 
     tts = await KokoroTTS.from_pretrained(MODEL_ID, {
       dtype: "q4",
@@ -47,6 +75,13 @@ export async function initTTS(): Promise<void> {
  */
 export function isTTSReady(): boolean {
   return tts !== null;
+}
+
+/**
+ * Return the current TTS status for the /api/tts-status endpoint.
+ */
+export function getTTSStatus(): { ready: boolean; loading: boolean; error: string | null } {
+  return { ready: tts !== null, loading, error: loadError };
 }
 
 /**

@@ -473,6 +473,34 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           return;
         }
 
+        // TTS status endpoint — returns model readiness for the UI
+        if (url.pathname === "/api/tts-status" && req.method === "GET") {
+          void (async () => {
+            try {
+              const { getTTSStatus } = await import("./ttsService.js");
+              const status = getTTSStatus();
+              respond(
+                200,
+                {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+                JSON.stringify(status),
+              );
+            } catch {
+              respond(
+                200,
+                {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+                JSON.stringify({ ready: false, loading: false, error: "TTS service unavailable" }),
+              );
+            }
+          })();
+          return;
+        }
+
         // TTS synthesis endpoint — uses Kokoro with native ONNX runtime
         if (url.pathname === "/api/tts" && req.method === "POST") {
           let body = "";
@@ -526,11 +554,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           return;
         }
 
-        // CORS preflight for TTS endpoint
-        if (url.pathname === "/api/tts" && req.method === "OPTIONS") {
+        // CORS preflight for TTS endpoints
+        if (
+          (url.pathname === "/api/tts" || url.pathname === "/api/tts-status") &&
+          req.method === "OPTIONS"
+        ) {
           respond(204, {
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
           });
           return;

@@ -37,12 +37,14 @@ import {
   EyeOffIcon,
   Download,
   Volume2,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { DeviceQRCode } from "~/components/DeviceQRCode";
 import {
-  isKokoroCached,
   deleteKokoroCache,
   downloadModel as downloadKokoro,
+  checkTTSServerStatus,
 } from "~/lib/tts/tts-engine";
 import type { RemoteDeviceConfig } from "~/appSettings";
 import { useRelay } from "~/lib/useRelayConnection";
@@ -50,9 +52,45 @@ import { useRelay } from "~/lib/useRelayConnection";
 // ── Text-to-Speech Settings ───────────────────────────────────────────
 
 function TextToSpeechSettings() {
-  const [modelReady, setModelReady] = useState(() => isKokoroCached());
+  const [modelReady, setModelReady] = useState(false);
+  const [modelLoading, setModelLoading] = useState(true);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    const checkStatus = async () => {
+      const status = await checkTTSServerStatus();
+      if (cancelled) return;
+      setModelReady(status.ready);
+      setModelLoading(status.loading);
+      setModelError(status.error);
+
+      // If still loading, poll every 3s
+      if (status.loading && !interval) {
+        interval = setInterval(async () => {
+          const s = await checkTTSServerStatus();
+          if (cancelled) return;
+          setModelReady(s.ready);
+          setModelLoading(s.loading);
+          setModelError(s.error);
+          if (!s.loading && interval) {
+            clearInterval(interval);
+            interval = undefined;
+          }
+        }, 3000);
+      }
+    };
+
+    void checkStatus();
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, []);
 
   async function handleDownload() {
     setDownloading(true);
@@ -75,6 +113,16 @@ function TextToSpeechSettings() {
     setModelReady(false);
   }
 
+  const statusText = modelReady
+    ? "Kokoro — ready"
+    : modelLoading
+      ? "Kokoro — loading model..."
+      : modelError
+        ? `Kokoro — failed: ${modelError}`
+        : downloading
+          ? `Downloading — ${downloadProgress}%`
+          : "Kokoro — ~40MB, downloads on first use";
+
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <div className="mb-4">
@@ -88,13 +136,7 @@ function TextToSpeechSettings() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-foreground">Voice model</p>
-            <p className="text-[11px] text-muted-foreground">
-              {modelReady
-                ? "Kokoro — downloaded"
-                : downloading
-                  ? `Downloading — ${downloadProgress}%`
-                  : "Kokoro — ~90MB, downloads on first use"}
-            </p>
+            <p className="text-[11px] text-muted-foreground">{statusText}</p>
           </div>
           {modelReady ? (
             <div className="flex items-center gap-2">
@@ -108,7 +150,13 @@ function TextToSpeechSettings() {
                 Delete
               </button>
             </div>
-          ) : downloading ? null : (
+          ) : modelError ? (
+            <div className="flex size-6 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="size-3 text-destructive" />
+            </div>
+          ) : downloading ? null : modelLoading ? (
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          ) : (
             <button
               onClick={() => void handleDownload()}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"

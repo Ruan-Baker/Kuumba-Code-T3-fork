@@ -25,9 +25,30 @@ export interface TTSStatus {
 
 // ── Public API ───────────────────────────────────────────────────────
 
-/** No-op — model is managed by the server. Kept for API compat. */
+export interface TTSServerStatus {
+  ready: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+/** Check the actual TTS model status from the server. */
+export async function checkTTSServerStatus(): Promise<TTSServerStatus> {
+  try {
+    const origin = resolveServerOrigin();
+    const res = await fetch(`${origin}/api/tts-status`);
+    if (!res.ok) return { ready: false, loading: false, error: "Could not reach TTS server" };
+    return (await res.json()) as TTSServerStatus;
+  } catch {
+    return { ready: false, loading: false, error: "Could not reach TTS server" };
+  }
+}
+
+/**
+ * @deprecated Use checkTTSServerStatus() for accurate status.
+ * Kept for backwards compat — now returns false so callers check the server.
+ */
 export function isKokoroCached(): boolean {
-  return true; // Server handles model loading
+  return false;
 }
 export function deleteKokoroCache(): void {}
 export async function downloadModel(_onStatus?: StatusCallback): Promise<void> {}

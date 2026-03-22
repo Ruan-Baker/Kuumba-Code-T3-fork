@@ -5,8 +5,8 @@ import {
   stop,
   setPlaybackRate,
   getPlaybackRate,
-  isKokoroCached,
   downloadModel,
+  checkTTSServerStatus,
   SPEED_STEPS,
   type TTSStatus,
   type PlaybackSpeed,
@@ -16,13 +16,39 @@ import { stripMarkdownForTTS } from "./markdown-stripper";
 export function useTTS() {
   const [status, setStatus] = useState<TTSStatus>({ state: "idle" });
   const [speed, setSpeed] = useState<PlaybackSpeed>(getPlaybackRate());
-  const [modelReady, setModelReady] = useState(() => isKokoroCached());
+  const [modelReady, setModelReady] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
+    let pollInterval: ReturnType<typeof setInterval> | undefined;
+
+    // Check real TTS status from the server on mount
+    void checkTTSServerStatus().then((serverStatus) => {
+      if (!isMounted.current) return;
+      setModelReady(serverStatus.ready);
+      if (serverStatus.error) setServerError(serverStatus.error);
+
+      // If still loading, poll until ready or failed
+      if (serverStatus.loading) {
+        pollInterval = setInterval(() => {
+          void checkTTSServerStatus().then((s) => {
+            if (!isMounted.current) return;
+            if (!s.loading) {
+              clearInterval(pollInterval);
+              pollInterval = undefined;
+              setModelReady(s.ready);
+              if (s.error) setServerError(s.error);
+            }
+          });
+        }, 3000);
+      }
+    });
+
     return () => {
       isMounted.current = false;
+      if (pollInterval) clearInterval(pollInterval);
       stop();
     };
   }, []);
@@ -73,14 +99,26 @@ export function useTTS() {
         if (status.state === "error") {
           safeSetStatus({ state: "idle" });
         }
-        if (!modelReady) {
-          safeSetStatus({ state: "needs-download" });
+
+        // Re-check server status before speaking
+        const serverStatus = await checkTTSServerStatus();
+        setModelReady(serverStatus.ready);
+
+        if (!serverStatus.ready) {
+          if (serverStatus.error) {
+            safeSetStatus({ state: "error", error: `Voice model failed: ${serverStatus.error}` });
+          } else if (serverStatus.loading) {
+            safeSetStatus({ state: "error", error: "Voice model is still loading. Try again in a few seconds." });
+          } else {
+            safeSetStatus({ state: "needs-download" });
+          }
           return;
         }
+
         await speakText(markdown);
       }
     },
-    [status.state, modelReady, speakText, stopSpeaking, safeSetStatus],
+    [status.state, speakText, stopSpeaking, safeSetStatus],
   );
 
   const cycleSpeed = useCallback(() => {
@@ -95,6 +133,7 @@ export function useTTS() {
     status,
     speed,
     modelReady,
+    serverError,
     isSpeaking: status.state === "speaking",
     isLoading: status.state === "downloading" || status.state === "synthesizing",
     needsDownload: status.state === "needs-download",
