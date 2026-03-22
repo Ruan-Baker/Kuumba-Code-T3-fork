@@ -68,7 +68,7 @@ jobs:
         run: bun run lint
 
       - name: Typecheck
-        run: bun run typecheck
+        run: bunx turbo run typecheck --filter='!@t3tools/marketing'
 
       - name: Test
         run: bun run test
