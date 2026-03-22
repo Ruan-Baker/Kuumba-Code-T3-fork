@@ -93,6 +93,8 @@ export interface RelayConfig {
   onDevicesChanged?: ((devices: PairedDevice[]) => void) | undefined;
   onConnected?: (() => void) | undefined;
   onDisconnected?: (() => void) | undefined;
+  onModeSync?: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | undefined;
+  onNotesSync?: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | undefined;
 }
 
 export class RelayTransport {
@@ -186,6 +188,26 @@ export class RelayTransport {
       set?.delete(wrapped);
       if (set?.size === 0) this.listeners.delete(channel);
     };
+  }
+
+  /** Send a mode sync message to the paired desktop */
+  async sendModeSync(interactionMode: string, runtimeMode: string, model?: string, reasoningLevel?: string): Promise<void> {
+    const peer = this.pairedDevices.get(this.config.targetDeviceId);
+    if (!peer) return;
+    const msg = JSON.stringify({ type: "mode.sync", interactionMode, runtimeMode, model, reasoningLevel });
+    const encrypted = await encrypt(peer.sharedKey, msg);
+    this.sendRaw({ type: "forward", targetDeviceId: this.config.targetDeviceId, encrypted });
+  }
+
+  /** Send a notes sync message to the paired desktop */
+  async sendNotesSync(cwd: string, editorState: string, timestamp: number): Promise<void> {
+    const peer = this.pairedDevices.get(this.config.targetDeviceId);
+    if (!peer) return;
+    const id = String(this.nextId++);
+    const body = { _tag: "notes.sync", cwd, editorState, timestamp };
+    const plaintext = JSON.stringify({ id, body });
+    const encrypted = await encrypt(peer.sharedKey, plaintext);
+    this.sendRaw({ type: "forward", targetDeviceId: this.config.targetDeviceId, encrypted });
   }
 
   dispose(): void {
@@ -323,9 +345,16 @@ export class RelayTransport {
 
       case "pair-rejected": {
         const m = msg as { deviceId: string; reason: string };
-        console.warn("[Relay] Pair rejected:", m.reason);
+        console.warn("[Relay] Pair rejected:", m.reason, "— will retry in 5s");
         this.pairedDevices.delete(m.deviceId);
         this.notifyDevicesChanged();
+        // Auto-retry pairing — desktop might be restarting
+        setTimeout(() => {
+          if (!this.disposed && this.registered) {
+            console.log("[Relay] Retrying pair-request...");
+            this.sendPairRequest();
+          }
+        }, 5000);
         break;
       }
 
@@ -421,8 +450,23 @@ export class RelayTransport {
 
     // Push message (has type: "push" and channel)
     if (parsed.type === "push" && typeof parsed.channel === "string") {
+      // Handle composer state push from desktop
+      if (parsed.channel === "composer.state-changed") {
+        console.log("[Relay] Composer state changed from desktop:", parsed.data);
+        this.config.onModeSync?.(parsed.data as { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string });
+        return;
+      }
+
+      // Handle notes sync push from desktop
+      if (parsed.channel === "notes.sync") {
+        console.log("[Relay] Notes sync from desktop");
+        this.config.onNotesSync?.(parsed.data as { cwd: string; editorState: string; timestamp: number });
+        return;
+      }
+      console.log("[Relay] Push event: channel=", parsed.channel, "event type=", (parsed.data as any)?.type);
       const channelListeners = this.listeners.get(parsed.channel);
       if (channelListeners) {
+        console.log("[Relay] Dispatching to", channelListeners.size, "listeners");
         for (const listener of channelListeners) {
           try {
             listener({ channel: parsed.channel, data: parsed.data });

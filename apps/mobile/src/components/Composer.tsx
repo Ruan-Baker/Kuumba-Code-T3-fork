@@ -181,7 +181,6 @@ export function Composer({
                 onSelectModel={() => onModelPickerOpen?.()}
                 onToggleInteractionMode={() => onToggleInteractionMode?.()}
                 onToggleRuntimeMode={() => onToggleRuntimeMode?.()}
-                onOpenNotes={() => onOpenNotes?.()}
               />
             </div>
 

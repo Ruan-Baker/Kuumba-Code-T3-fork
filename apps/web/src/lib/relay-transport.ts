@@ -210,8 +210,11 @@ export class RelayTransport {
     switch (msg.type) {
       case "register-ack": {
         if (msg.success) {
+          const wasAlreadyRegistered = this.registered;
           this.registered = true;
-          this.config.onConnected?.();
+          if (!wasAlreadyRegistered) {
+            this.config.onConnected?.();
+          }
           this.queryDevices();
         }
         break;
@@ -219,7 +222,10 @@ export class RelayTransport {
 
       case "forwarded": {
         const peer = this.pairedDevices.get(msg.fromDeviceId);
-        if (!peer) break;
+        if (!peer) {
+          console.warn(`[RelayTransport] Forwarded message from UNKNOWN device ${msg.fromDeviceId} — not in pairedDevices:`, [...this.pairedDevices.keys()]);
+          break;
+        }
         try {
           const plaintext = await decrypt(peer.sharedKey, msg.encrypted);
           // Dispatch to the per-device handler registered by a RelayWsBridge, if any.
@@ -229,8 +235,8 @@ export class RelayTransport {
           }
           // Also call the global onMessage callback for any other consumers.
           this.config.onMessage?.(msg.fromDeviceId, msg.fromDeviceName, plaintext);
-        } catch {
-          // Decryption failure — ignore malformed/tampered messages
+        } catch (err) {
+          console.error("[RelayTransport] Decryption failed for message from", msg.fromDeviceId, err);
         }
         break;
       }
@@ -249,6 +255,7 @@ export class RelayTransport {
       }
 
       case "pair-accepted": {
+        console.log(`[RelayTransport] pair-accepted from ${msg.deviceName} (${msg.deviceId})`);
         if (!this.keyPair) break;
         const sharedKey = await deriveSharedKey(this.keyPair.privateKey, msg.publicKey);
         const existing = this.pairedDevices.get(msg.deviceId);

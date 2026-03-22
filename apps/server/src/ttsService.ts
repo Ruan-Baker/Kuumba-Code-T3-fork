@@ -28,7 +28,7 @@ export async function initTTS(): Promise<void> {
     const { KokoroTTS } = await import("kokoro-js");
 
     tts = await KokoroTTS.from_pretrained(MODEL_ID, {
-      dtype: "q8",
+      dtype: "q4",
       device: "cpu",
     });
 

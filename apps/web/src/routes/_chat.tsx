@@ -14,6 +14,10 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { Sidebar, SidebarProvider } from "~/components/ui/sidebar";
 import { resolveSidebarNewThreadEnvMode } from "~/components/Sidebar.logic";
 import { useAppSettings } from "~/appSettings";
+import { FloatingNotesPanel } from "~/components/ProjectNotesPopover";
+import { useNotesFloatingStore } from "~/lib/notesFloatingStore";
+import { useRelay } from "~/lib/useRelayConnection";
+import { useProjectNotesStore, setNotesPushHandler } from "~/projectNotesStore";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 
@@ -38,6 +42,19 @@ function ChatRouteGlobalShortcuts() {
       if (event.key === "Escape" && selectedThreadIdsSize > 0) {
         event.preventDefault();
         clearSelection();
+        return;
+      }
+
+      // Ctrl+Shift+P — toggle project notes for the current thread's project
+      if (event.key === "P" && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        const project = projects.find(
+          (p) => p.id === (activeThread?.projectId ?? activeDraftThread?.projectId),
+        ) ?? projects[0];
+        if (project) {
+          useNotesFloatingStore.getState().toggle(project.cwd, project.name);
+        }
         return;
       }
 
@@ -91,6 +108,29 @@ function ChatRouteGlobalShortcuts() {
   return null;
 }
 
+/** Wires up real-time notes sync between desktop and mobile via relay. */
+function NotesSyncBridge() {
+  const { pushNotesSync, onNotesSyncReceived } = useRelay();
+
+  useEffect(() => {
+    // Desktop → Mobile: push notes when local edits happen
+    setNotesPushHandler((cwd, editorState, timestamp) => {
+      pushNotesSync(cwd, editorState, timestamp);
+    });
+
+    // Mobile → Desktop: receive notes updates from mobile
+    onNotesSyncReceived((data) => {
+      useProjectNotesStore.getState().setEditorStateFromRemote(data.cwd, data.editorState);
+    });
+
+    return () => {
+      setNotesPushHandler(null);
+    };
+  }, [pushNotesSync, onNotesSyncReceived]);
+
+  return null;
+}
+
 function ChatRouteLayout() {
   const navigate = useNavigate();
 
@@ -113,6 +153,8 @@ function ChatRouteLayout() {
   return (
     <SidebarProvider defaultOpen className="!h-screen !min-h-0">
       <ChatRouteGlobalShortcuts />
+      <NotesSyncBridge />
+      <FloatingNotesPanel />
       <Sidebar
         side="left"
         collapsible="offcanvas"

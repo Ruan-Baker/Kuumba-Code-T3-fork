@@ -36,6 +36,12 @@ interface ConnectionStoreState {
   relayDevices: PairedDeviceInfo[];
   /** Relay WebSocket connection status */
   relayConnected: boolean;
+  /** Callback for mode sync from desktop */
+  modeSyncHandler: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | null;
+  setModeSyncHandler: (handler: ((data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) | null) => void;
+  /** Callback for notes sync from desktop */
+  notesSyncHandler: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | null;
+  setNotesSyncHandler: (handler: ((data: { cwd: string; editorState: string; timestamp: number }) => void) | null) => void;
 
   connect: (device: SavedDevice) => AnyTransport;
   disconnect: (deviceId: string) => void;
@@ -57,6 +63,10 @@ export const useConnectionStore = create<ConnectionStoreState>()((set, get) => (
   activeDeviceId: null,
   relayDevices: [],
   relayConnected: false,
+  modeSyncHandler: null,
+  setModeSyncHandler: (handler) => set({ modeSyncHandler: handler }),
+  notesSyncHandler: null,
+  setNotesSyncHandler: (handler) => set({ notesSyncHandler: handler }),
 
   connect: (device) => {
     const existing = get().connections[device.id];
@@ -71,6 +81,14 @@ export const useConnectionStore = create<ConnectionStoreState>()((set, get) => (
         targetPairingToken: device.pairingToken,
         targetPublicKey: device.publicKey ?? "",
         targetDeviceName: device.name,
+        onModeSync: (data) => {
+          const handler = get().modeSyncHandler;
+          if (handler) handler(data);
+        },
+        onNotesSync: (data) => {
+          const handler = get().notesSyncHandler;
+          if (handler) handler(data);
+        },
         onDevicesChanged: (devices) => {
           set({ relayDevices: devices });
         },

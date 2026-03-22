@@ -82,7 +82,7 @@ export function useSession(
 
   const unsubRef = useRef<(() => void) | null>(null);
 
-  // Load snapshot — with stale-while-revalidate caching
+  // Load snapshot — instant from cache, then refresh in background
   useEffect(() => {
     if (!transport || !threadId) {
       setState({ loading: false, error: null, thread: null, messages: [], activities: [], pendingApprovals: [], proposedPlans: [], pendingUserInputs: [] });
@@ -90,131 +90,142 @@ export function useSession(
     }
 
     let cancelled = false;
-
-    // Try loading from cache first for instant display
     const cacheKey = `kuumba-session-${threadId}`;
+    const seqKey = `kuumba-session-seq-${threadId}`;
+
+    // Step 1: Show cached state IMMEDIATELY (not loading — fully interactive)
+    let hasCachedData = false;
+    let cachedSequence = 0;
     try {
       const cached = localStorage.getItem(cacheKey);
+      const seq = localStorage.getItem(seqKey);
       if (cached) {
         const cachedState = JSON.parse(cached) as SessionState;
-        if (cachedState.thread && cachedState.messages.length > 0) {
-          setState({ ...cachedState, loading: true, error: null });
-        } else {
-          setState((s) => ({ ...s, loading: true, error: null }));
+        // Invalidate cache if it has stale "Unknown" project name
+        if (cachedState.thread?.projectName === "Unknown") {
+          console.log("[useSession] Invalidating stale cache with Unknown project");
+          localStorage.removeItem(cacheKey);
+          localStorage.removeItem(seqKey);
+        } else if (cachedState.thread && cachedState.messages.length > 0) {
+          setState({ ...cachedState, loading: false, error: null });
+          hasCachedData = true;
+          cachedSequence = seq ? parseInt(seq, 10) : 0;
+          console.log(`[useSession] Instant cache hit: ${cachedState.messages.length} messages, seq=${cachedSequence}, project=${cachedState.thread.projectName}`);
         }
-      } else {
-        setState((s) => ({ ...s, loading: true, error: null }));
       }
-    } catch {
+    } catch { /* ignore */ }
+
+    if (!hasCachedData) {
       setState((s) => ({ ...s, loading: true, error: null }));
     }
 
-    transport
-      .request<{
-        threads: Array<{
-          id: string;
-          title: string;
-          projectId: string;
-          model: string;
-          session: { status: string } | null;
-          messages: Array<{
-            id: string;
-            role: "user" | "assistant" | "system";
-            text: string;
-            streaming: boolean;
-            createdAt: string;
-            updatedAt: string;
+    // Step 2: Refresh in background
+    const refreshSession = async () => {
+      try {
+        // If we have cached data with a sequence, try delta update first
+        if (hasCachedData && cachedSequence > 0) {
+          console.log(`[useSession] Trying delta update from seq=${cachedSequence}`);
+          try {
+            const events = await transport.request<Array<{
+              type: string;
+              aggregateId?: string;
+              payload: Record<string, unknown>;
+            }>>(ORCHESTRATION_WS_METHODS.replayEvents, { fromSequenceExclusive: cachedSequence });
+
+            if (cancelled) return;
+
+            if (events && events.length < 500) {
+              // Apply delta events to cached state
+              console.log(`[useSession] Delta update: ${events.length} events since seq=${cachedSequence}`);
+              applyDeltaEvents(events, threadId, setState);
+
+              // Update cached sequence
+              if (events.length > 0) {
+                const lastEvent = events[events.length - 1] as { sequence?: number };
+                if (lastEvent?.sequence) {
+                  localStorage.setItem(seqKey, String(lastEvent.sequence));
+                }
+              }
+
+              // Save updated state to cache
+              saveCacheAsync(cacheKey, seqKey, threadId, setState);
+              return; // Delta update succeeded, no need for full snapshot
+            }
+            // Too many events — fall through to full snapshot
+            console.log(`[useSession] Too many delta events (${events?.length}), falling back to full snapshot`);
+          } catch {
+            // Delta update failed — fall through to full snapshot
+            console.log("[useSession] Delta update failed, falling back to full snapshot");
+          }
+        }
+
+        // Full snapshot load
+        console.log("[useSession] Loading full snapshot for thread:", threadId);
+        const snapshot = await transport.request<{
+          threads: Array<{
+            id: string; title: string; projectId: string; model: string;
+            session: { status: string } | null;
+            messages: Array<{ id: string; role: "user" | "assistant" | "system"; text: string; streaming: boolean; createdAt: string; updatedAt: string }>;
+            activities: Array<{ id: string; tone: "info" | "tool" | "approval" | "error"; kind: string; summary: string; payload: unknown; createdAt: string }>;
+            proposedPlans: Array<{ id: string; planMarkdown: string; implementedAt: string | null; createdAt: string }>;
           }>;
-          activities: Array<{
-            id: string;
-            tone: "info" | "tool" | "approval" | "error";
-            kind: string;
-            summary: string;
-            payload: unknown;
-            createdAt: string;
-          }>;
-          proposedPlans: Array<{
-            id: string;
-            planMarkdown: string;
-            implementedAt: string | null;
-            createdAt: string;
-          }>;
-        }>;
-        projects: Array<{ id: string; name: string; cwd: string }>;
-      }>(ORCHESTRATION_WS_METHODS.getSnapshot)
-      .then((snapshot) => {
+          projects: Array<{ id: string; title?: string; name?: string; workspaceRoot?: string; cwd?: string }>;
+          snapshotSequence?: number;
+        }>(ORCHESTRATION_WS_METHODS.getSnapshot);
+
         if (cancelled) return;
 
         const thread = snapshot.threads.find((t) => t.id === threadId);
         if (!thread) {
-          setState({ loading: false, error: "Thread not found", thread: null, messages: [], activities: [], pendingApprovals: [], proposedPlans: [], pendingUserInputs: [] });
+          if (!hasCachedData) {
+            setState({ loading: false, error: "Thread not found", thread: null, messages: [], activities: [], pendingApprovals: [], proposedPlans: [], pendingUserInputs: [] });
+          }
           return;
         }
 
         const project = snapshot.projects.find((p) => p.id === thread.projectId);
-
-        // Extract pending approvals from activities
+        console.log("[useSession] Project lookup:", { projectId: thread.projectId, found: !!project, projectFields: project ? Object.keys(project) : [], title: (project as any)?.title, name: (project as any)?.name, workspaceRoot: (project as any)?.workspaceRoot, cwd: (project as any)?.cwd });
         const pendingApprovals: PendingApproval[] = thread.activities
           .filter((a) => a.tone === "approval")
-          .map((a) => {
-            const payload = a.payload as Record<string, unknown> | null;
-            return {
-              requestId: a.id,
-              type: a.kind,
-              detail: a.summary,
-            };
-          });
+          .map((a) => ({ requestId: a.id, type: a.kind, detail: a.summary }));
 
-        setState({
+        const newState: SessionState = {
           loading: false,
           error: null,
           thread: {
-            id: thread.id,
-            title: thread.title,
-            projectName: project?.name ?? "Unknown",
-            projectCwd: project?.cwd ?? "",
-            model: thread.model,
-            sessionStatus: thread.session?.status ?? null,
+            id: thread.id, title: thread.title,
+            projectName: project?.title ?? project?.name ?? "Unknown",
+            projectCwd: project?.workspaceRoot ?? project?.cwd ?? "",
+            model: thread.model, sessionStatus: thread.session?.status ?? null,
           },
-          messages: thread.messages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.text,
-            streaming: m.streaming,
-            createdAt: m.createdAt,
-            updatedAt: m.updatedAt,
-          })),
-          activities: thread.activities.map((a) => ({
-            id: a.id,
-            tone: a.tone,
-            kind: a.kind,
-            summary: a.summary,
-            payload: a.payload,
-            createdAt: a.createdAt,
-          })),
+          messages: thread.messages.map((m) => ({ id: m.id, role: m.role, text: m.text, streaming: m.streaming, createdAt: m.createdAt, updatedAt: m.updatedAt })),
+          activities: thread.activities.map((a) => ({ id: a.id, tone: a.tone, kind: a.kind ?? "", summary: a.summary, payload: a.payload, createdAt: a.createdAt })),
           pendingApprovals,
-          proposedPlans: (thread.proposedPlans ?? []).map((p) => ({
-            id: p.id,
-            planMarkdown: p.planMarkdown,
-            implementedAt: p.implementedAt,
-            createdAt: p.createdAt,
-          })),
+          proposedPlans: (thread.proposedPlans ?? []).map((p) => ({ id: p.id, planMarkdown: p.planMarkdown, implementedAt: p.implementedAt, createdAt: p.createdAt })),
           pendingUserInputs: [],
-        });
+        };
 
-        // Cache for instant loading next time (async, non-blocking)
+        setState(newState);
+
+        // Cache for next time
         try {
-          const toCache = {
-            thread: { id: thread.id, title: thread.title, projectName: project?.name ?? "Unknown", projectCwd: project?.cwd ?? "", model: thread.model, sessionStatus: thread.session?.status ?? null },
-            messages: thread.messages.slice(-100), // Only cache last 100 messages
-          };
-          localStorage.setItem(cacheKey, JSON.stringify({ ...toCache, loading: false, error: null, activities: [], pendingApprovals: [], proposedPlans: [], pendingUserInputs: [] }));
-        } catch { /* storage full — ignore */ }
-      })
-      .catch((err) => {
+          const toCache = { ...newState, messages: newState.messages.slice(-100) };
+          localStorage.setItem(cacheKey, JSON.stringify(toCache));
+          if (snapshot.snapshotSequence) {
+            localStorage.setItem(seqKey, String(snapshot.snapshotSequence));
+          }
+        } catch { /* storage full */ }
+      } catch (err) {
         if (cancelled) return;
-        setState({ loading: false, error: err instanceof Error ? err.message : "Failed to load", thread: null, messages: [], activities: [], pendingApprovals: [], proposedPlans: [], pendingUserInputs: [] });
-      });
+        console.error("[useSession] Snapshot load failed:", err);
+        if (!hasCachedData) {
+          setState({ loading: false, error: err instanceof Error ? err.message : "Failed to load", thread: null, messages: [], activities: [], pendingApprovals: [], proposedPlans: [], pendingUserInputs: [] });
+        }
+        // If we have cached data, silently keep showing it
+      }
+    };
+
+    void refreshSession();
 
     return () => { cancelled = true; };
   }, [transport, threadId]);
@@ -229,40 +240,67 @@ export function useSession(
       (pushMsg) => {
         const event = pushMsg.data as {
           type: string;
+          aggregateId?: string;
           payload: Record<string, unknown>;
         };
 
+        console.log("[useSession] Push event:", event.type, "aggregateId:", event.aggregateId, "payload threadId:", event.payload?.threadId);
+
         const eventThreadId =
           (event.payload?.threadId as string) ??
-          (event.payload?.aggregateId as string);
+          event.aggregateId;
         if (eventThreadId !== threadId) return;
 
         switch (event.type) {
           case "thread.message-sent": {
-            const p = event.payload as {
-              messageId: string;
-              role: "user" | "assistant" | "system";
-              text: string;
-              streaming: boolean;
-              createdAt: string;
-              updatedAt: string;
-            };
+            const p = event.payload as Record<string, unknown>;
+            const messageId = (p.messageId ?? p.id) as string;
+            const role = (p.role ?? "assistant") as "user" | "assistant" | "system";
+            const textDelta = (p.text ?? "") as string;
+            const streaming = (p.streaming ?? false) as boolean;
+            const createdAt = (p.createdAt ?? new Date().toISOString()) as string;
+            const updatedAt = (p.updatedAt ?? createdAt) as string;
 
             setState((s) => {
-              const existingIdx = s.messages.findIndex((m) => m.id === p.messageId);
+              const existingIdx = s.messages.findIndex((m) => m.id === messageId);
               if (existingIdx >= 0) {
+                // Existing message — append delta if streaming, replace if done
+                const existing = s.messages[existingIdx]!;
                 const updated = [...s.messages];
-                updated[existingIdx] = {
-                  id: p.messageId,
-                  role: p.role,
-                  text: p.text,
-                  streaming: p.streaming,
-                  createdAt: p.createdAt,
-                  updatedAt: p.updatedAt,
-                };
+                if (streaming) {
+                  // Streaming delta — append text
+                  updated[existingIdx] = {
+                    ...existing,
+                    text: existing.text + textDelta,
+                    streaming: true,
+                    updatedAt,
+                  };
+                } else {
+                  // Stream finished — keep accumulated text, mark not streaming
+                  updated[existingIdx] = {
+                    ...existing,
+                    streaming: false,
+                    updatedAt,
+                  };
+                }
                 return { ...s, messages: updated };
               }
-              return { ...s, messages: [...s.messages, { id: p.messageId, role: p.role, text: p.text, streaming: p.streaming, createdAt: p.createdAt, updatedAt: p.updatedAt }] };
+
+              // New message
+              if (role === "user" && s.messages.some((m) => m.role === "user" && m.text === textDelta)) {
+                return s; // Skip duplicate optimistic user message
+              }
+              return {
+                ...s,
+                messages: [...s.messages, {
+                  id: messageId,
+                  role,
+                  text: textDelta,
+                  streaming,
+                  createdAt,
+                  updatedAt,
+                }],
+              };
             });
             break;
           }
@@ -329,32 +367,111 @@ export function useSession(
   }, [transport, threadId]);
 
   const sendMessage = useCallback(
-    (text: string) => {
-      if (!transport || !threadId) return;
-      void transport.request(ORCHESTRATION_WS_METHODS.dispatchCommand, {
-        command: { _tag: "SendMessage", threadId, text },
-      });
+    (text: string, images?: File[], options?: { runtimeMode?: string; interactionMode?: string; provider?: string }) => {
+      if (!transport || !threadId) {
+        console.warn("[useSession] sendMessage: no transport or threadId", { transport: !!transport, threadId });
+        return;
+      }
+
+      void (async () => {
+        try {
+          // Convert images to base64 attachments if present
+          let attachments: Array<{ type: string; mediaType: string; data: string; name: string }> = [];
+          if (images && images.length > 0) {
+            attachments = await Promise.all(
+              images.map(async (file) => {
+                const buffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = "";
+                for (const byte of bytes) binary += String.fromCharCode(byte);
+                return {
+                  type: "image",
+                  mediaType: file.type || "image/png",
+                  data: btoa(binary),
+                  name: file.name,
+                };
+              }),
+            );
+          }
+
+          const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          const commandId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          const now = new Date().toISOString();
+
+          // Optimistically add the user message to the UI immediately
+          setState((s) => ({
+            ...s,
+            messages: [
+              ...s.messages,
+              {
+                id: messageId,
+                role: "user" as const,
+                text,
+                streaming: false,
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+          }));
+
+          const resolvedRuntime = options?.runtimeMode ?? "full-access";
+          const resolvedInteraction = options?.interactionMode === "plan" ? "plan" : "default";
+          console.log("[useSession] Sending thread.turn.start:", text.slice(0, 50), { runtimeMode: resolvedRuntime, interactionMode: resolvedInteraction });
+
+          await transport.request(ORCHESTRATION_WS_METHODS.dispatchCommand, {
+            command: {
+              type: "thread.turn.start",
+              commandId,
+              threadId,
+              message: {
+                messageId,
+                role: "user",
+                text,
+                attachments: [],
+              },
+              provider: options?.provider ?? "codex",
+              assistantDeliveryMode: "streaming",
+              runtimeMode: options?.runtimeMode ?? "full-access",
+              interactionMode: options?.interactionMode === "plan" ? "plan" : "default",
+              createdAt: now,
+            },
+          });
+        } catch (err) {
+          console.error("[useSession] sendMessage failed:", err);
+        }
+      })();
     },
     [transport, threadId],
   );
 
   const stopTurn = useCallback(() => {
     if (!transport || !threadId) return;
+    const commandId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     void transport.request(ORCHESTRATION_WS_METHODS.dispatchCommand, {
-      command: { _tag: "InterruptTurn", threadId },
+      command: {
+        type: "thread.turn.interrupt",
+        commandId,
+        threadId,
+      },
+    }).catch((err) => {
+      console.error("[useSession] stopTurn failed:", err);
     });
   }, [transport, threadId]);
 
   const respondToApproval = useCallback(
     (requestId: string, decision: "approve" | "deny") => {
       if (!transport || !threadId) return;
+      const commandId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       void transport.request(ORCHESTRATION_WS_METHODS.dispatchCommand, {
         command: {
-          _tag: "RespondToApproval",
+          type: "thread.approval.respond",
+          commandId,
           threadId,
           requestId,
           decision,
         },
+      }).catch((err) => {
+        console.error("[useSession] respondToApproval failed:", err);
       });
       // Remove from pending
       setState((s) => ({
@@ -371,4 +488,77 @@ export function useSession(
     stopTurn,
     respondToApproval,
   };
+}
+
+// ── Helper: apply delta events to cached session state ──────────────
+
+function applyDeltaEvents(
+  events: Array<{ type: string; aggregateId?: string; payload: Record<string, unknown> }>,
+  threadId: string,
+  setState: React.Dispatch<React.SetStateAction<SessionState>>,
+) {
+  for (const event of events) {
+    const eventThreadId = (event.payload?.threadId as string) ?? event.aggregateId;
+    if (eventThreadId !== threadId) continue;
+
+    switch (event.type) {
+      case "thread.message-sent": {
+        const p = event.payload;
+        const messageId = (p.messageId ?? p.id) as string;
+        const role = (p.role ?? "assistant") as "user" | "assistant" | "system";
+        const text = (p.text ?? "") as string;
+        const streaming = (p.streaming ?? false) as boolean;
+        const createdAt = (p.createdAt ?? new Date().toISOString()) as string;
+        const updatedAt = (p.updatedAt ?? createdAt) as string;
+
+        setState((s) => {
+          const idx = s.messages.findIndex((m) => m.id === messageId);
+          if (idx >= 0) {
+            const updated = [...s.messages];
+            const existing = updated[idx]!;
+            if (streaming) {
+              updated[idx] = { ...existing, text: existing.text + text, streaming: true, updatedAt };
+            } else {
+              updated[idx] = { ...existing, streaming: false, updatedAt };
+            }
+            return { ...s, messages: updated };
+          }
+          return { ...s, messages: [...s.messages, { id: messageId, role, text, streaming, createdAt, updatedAt }] };
+        });
+        break;
+      }
+      case "thread.meta-updated": {
+        const title = event.payload.title as string | undefined;
+        if (title) {
+          setState((s) => s.thread ? { ...s, thread: { ...s.thread, title } } : s);
+        }
+        break;
+      }
+      case "thread.session-set": {
+        const status = event.payload.status as string | undefined;
+        if (status) {
+          setState((s) => s.thread ? { ...s, thread: { ...s.thread, sessionStatus: status } } : s);
+        }
+        break;
+      }
+    }
+  }
+}
+
+// ── Helper: save current state to cache asynchronously ──────────────
+
+function saveCacheAsync(
+  cacheKey: string,
+  seqKey: string,
+  _threadId: string,
+  setState: React.Dispatch<React.SetStateAction<SessionState>>,
+) {
+  // Read current state and save to cache
+  setState((s) => {
+    try {
+      const toCache = { ...s, messages: s.messages.slice(-100) };
+      localStorage.setItem(cacheKey, JSON.stringify(toCache));
+    } catch { /* storage full */ }
+    return s; // Don't modify state
+  });
 }

@@ -42,11 +42,13 @@ export const ActivityCard = memo(function ActivityCard({ activity }: ActivityCar
   const payload = activity.payload as Record<string, unknown> | null;
   const detail = typeof payload?.detail === "string" ? payload.detail : null;
   const command = typeof payload?.command === "string" ? payload.command : null;
-  const isCommand = activity.kind.includes("command") || activity.kind.includes("bash") || !!command;
+  const kind = activity.kind ?? "";
+  const isCommand = kind.includes("command") || kind.includes("bash") || !!command;
 
   // Don't render thinking/internal activities
-  if (activity.kind === "tool.started") return null;
+  if (kind === "tool.started") return null;
   if (activity.summary === "Checkpoint captured") return null;
+  if (!kind && !activity.summary) return null;
 
   return (
     <div

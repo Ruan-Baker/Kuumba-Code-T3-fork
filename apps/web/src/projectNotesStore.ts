@@ -2,6 +2,7 @@ import type { NativeApi } from "@t3tools/contracts";
 import { create } from "zustand";
 import { Debouncer } from "@tanstack/react-pacer";
 import { ensureNativeApi } from "./nativeApi";
+import { migrateV1ToV2 } from "./components/notes/notesMigration";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -13,19 +14,15 @@ export interface TodoItem {
 }
 
 export interface ProjectNotesData {
-  version: 1;
-  text: string;
+  version: 2;
+  editorState: string | null; // JSON-stringified Lexical EditorState
   todos: TodoItem[];
 }
 
 const NOTES_RELATIVE_PATH = ".kuumbacode/notes.json";
 
 function createEmptyNotes(): ProjectNotesData {
-  return { version: 1, text: "", todos: [] };
-}
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return { version: 2, editorState: null, todos: [] };
 }
 
 // ── Store ────────────────────────────────────────────────────────────
@@ -37,12 +34,8 @@ interface ProjectNotesState {
 
 interface ProjectNotesActions {
   loadNotes: (cwd: string) => Promise<void>;
-  setText: (cwd: string, text: string) => void;
-  addTodo: (cwd: string, label: string) => void;
-  toggleTodo: (cwd: string, todoId: string) => void;
-  removeTodo: (cwd: string, todoId: string) => void;
-  updateTodoLabel: (cwd: string, todoId: string, label: string) => void;
-  reorderTodos: (cwd: string, orderedIds: string[]) => void;
+  setEditorState: (cwd: string, editorState: string) => void;
+  setEditorStateFromRemote: (cwd: string, editorState: string) => void;
 }
 
 // One debouncer per project cwd
@@ -55,7 +48,7 @@ function getDebouncedSave(cwd: string) {
       (_cwd: string, data: ProjectNotesData) => {
         void saveNotes(_cwd, data);
       },
-      { wait: 500 },
+      { wait: 300 },
     );
     debouncers.set(cwd, debouncer);
   }
@@ -90,12 +83,32 @@ async function saveNotes(cwd: string, data: ProjectNotesData): Promise<void> {
   } catch {
     // Silently fail — don't break UX for notes persistence errors
   }
+
+  // Push to connected mobile devices
+  pushNotesToDevices(cwd, data);
 }
 
 function triggerSave(cwd: string, data: ProjectNotesData) {
   const debouncer = getDebouncedSave(cwd);
   debouncer.maybeExecute(cwd, data);
 }
+
+// ── Real-time sync push ──────────────────────────────────────────────
+
+type NotesPushFn = (cwd: string, editorState: string, timestamp: number) => void;
+let notesPushHandler: NotesPushFn | null = null;
+
+/** Register a handler that pushes notes updates to mobile devices. */
+export function setNotesPushHandler(handler: NotesPushFn | null): void {
+  notesPushHandler = handler;
+}
+
+function pushNotesToDevices(cwd: string, data: ProjectNotesData): void {
+  if (!notesPushHandler || !data.editorState) return;
+  notesPushHandler(cwd, data.editorState, Date.now());
+}
+
+// ── Zustand store ────────────────────────────────────────────────────
 
 export const useProjectNotesStore = create<ProjectNotesState & ProjectNotesActions>((set, get) => ({
   notesByCwd: {},
@@ -120,21 +133,32 @@ export const useProjectNotesStore = create<ProjectNotesState & ProjectNotesActio
       if (result.contents) {
         try {
           const parsed = JSON.parse(result.contents);
-          notes = {
-            version: 1,
-            text: typeof parsed.text === "string" ? parsed.text : "",
-            todos: Array.isArray(parsed.todos)
-              ? parsed.todos.filter(
-                  (t: unknown): t is TodoItem =>
-                    typeof t === "object" &&
-                    t !== null &&
-                    "id" in t &&
-                    "label" in t &&
-                    "done" in t &&
-                    "order" in t,
-                )
-              : [],
-          };
+
+          if (parsed.version === 2) {
+            // v2 format — use directly
+            notes = {
+              version: 2,
+              editorState: typeof parsed.editorState === "string" ? parsed.editorState : null,
+              todos: Array.isArray(parsed.todos) ? parsed.todos : [],
+            };
+          } else {
+            // v1 format — migrate
+            const oldText = typeof parsed.text === "string" ? parsed.text : "";
+            let editorState: string | null = null;
+            if (oldText) {
+              try {
+                const migrated = migrateV1ToV2(oldText);
+                editorState = JSON.stringify(migrated);
+              } catch {
+                editorState = null;
+              }
+            }
+            notes = {
+              version: 2,
+              editorState,
+              todos: Array.isArray(parsed.todos) ? parsed.todos : [],
+            };
+          }
         } catch {
           notes = createEmptyNotes();
         }
@@ -147,7 +171,6 @@ export const useProjectNotesStore = create<ProjectNotesState & ProjectNotesActio
         loadingCwds: new Set([...s.loadingCwds].filter((c) => c !== cwd)),
       }));
     } catch {
-      // If read fails, initialize with empty notes
       set((s) => ({
         notesByCwd: { ...s.notesByCwd, [cwd]: createEmptyNotes() },
         loadingCwds: new Set([...s.loadingCwds].filter((c) => c !== cwd)),
@@ -155,85 +178,20 @@ export const useProjectNotesStore = create<ProjectNotesState & ProjectNotesActio
     }
   },
 
-  setText: (cwd: string, text: string) => {
+  setEditorState: (cwd: string, editorState: string) => {
     set((s) => {
       const existing = s.notesByCwd[cwd] ?? createEmptyNotes();
-      const updated = { ...existing, text };
+      const updated = { ...existing, editorState };
       triggerSave(cwd, updated);
       return { notesByCwd: { ...s.notesByCwd, [cwd]: updated } };
     });
   },
 
-  addTodo: (cwd: string, label: string) => {
+  /** Update from remote sync — does NOT trigger save or push back. */
+  setEditorStateFromRemote: (cwd: string, editorState: string) => {
     set((s) => {
       const existing = s.notesByCwd[cwd] ?? createEmptyNotes();
-      const maxOrder = existing.todos.reduce((max, t) => Math.max(max, t.order), -1);
-      const newTodo: TodoItem = {
-        id: generateId(),
-        label,
-        done: false,
-        order: maxOrder + 1,
-      };
-      const updated = { ...existing, todos: [...existing.todos, newTodo] };
-      triggerSave(cwd, updated);
-      return { notesByCwd: { ...s.notesByCwd, [cwd]: updated } };
-    });
-  },
-
-  toggleTodo: (cwd: string, todoId: string) => {
-    set((s) => {
-      const existing = s.notesByCwd[cwd] ?? createEmptyNotes();
-      const updated = {
-        ...existing,
-        todos: existing.todos.map((t) => (t.id === todoId ? { ...t, done: !t.done } : t)),
-      };
-      triggerSave(cwd, updated);
-      return { notesByCwd: { ...s.notesByCwd, [cwd]: updated } };
-    });
-  },
-
-  removeTodo: (cwd: string, todoId: string) => {
-    set((s) => {
-      const existing = s.notesByCwd[cwd] ?? createEmptyNotes();
-      const updated = {
-        ...existing,
-        todos: existing.todos.filter((t) => t.id !== todoId),
-      };
-      triggerSave(cwd, updated);
-      return { notesByCwd: { ...s.notesByCwd, [cwd]: updated } };
-    });
-  },
-
-  updateTodoLabel: (cwd: string, todoId: string, label: string) => {
-    set((s) => {
-      const existing = s.notesByCwd[cwd] ?? createEmptyNotes();
-      const updated = {
-        ...existing,
-        todos: existing.todos.map((t) => (t.id === todoId ? { ...t, label } : t)),
-      };
-      triggerSave(cwd, updated);
-      return { notesByCwd: { ...s.notesByCwd, [cwd]: updated } };
-    });
-  },
-
-  reorderTodos: (cwd: string, orderedIds: string[]) => {
-    set((s) => {
-      const existing = s.notesByCwd[cwd] ?? createEmptyNotes();
-      const todoMap = new Map(existing.todos.map((t) => [t.id, t]));
-      const reordered = orderedIds
-        .map((id, index) => {
-          const todo = todoMap.get(id);
-          return todo ? { ...todo, order: index } : null;
-        })
-        .filter((t): t is TodoItem => t !== null);
-      // Add any todos not in orderedIds at the end
-      const orderedSet = new Set(orderedIds);
-      const remaining = existing.todos
-        .filter((t) => !orderedSet.has(t.id))
-        .map((t, i) => ({ ...t, order: reordered.length + i }));
-      const updated = { ...existing, todos: [...reordered, ...remaining] };
-      triggerSave(cwd, updated);
-      return { notesByCwd: { ...s.notesByCwd, [cwd]: updated } };
+      return { notesByCwd: { ...s.notesByCwd, [cwd]: { ...existing, editorState } } };
     });
   },
 }));

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
-import { Settings, ChevronDown, ChevronLeft, RefreshCw } from "lucide-react";
+import { Settings, ChevronDown, ChevronLeft, RefreshCw, StickyNote } from "lucide-react";
 import { cn } from "~/lib/utils";
 
 interface SessionInfo {
@@ -27,6 +27,8 @@ interface ChatHeaderProps {
   hasActiveSession?: boolean | undefined;
   onSelectSession?: ((deviceId: string, threadId: string) => void) | undefined;
   onRefresh?: (() => void) | undefined;
+  onOpenNotes?: (() => void) | undefined;
+  hasNotes?: boolean | undefined;
 }
 
 export function ChatHeader({
@@ -35,6 +37,8 @@ export function ChatHeader({
   hasActiveSession,
   onSelectSession,
   onRefresh,
+  onOpenNotes,
+  hasNotes,
 }: ChatHeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   // Store by ID, not object reference, so re-renders don't reset the view
@@ -103,6 +107,16 @@ export function ChatHeader({
           className="flex size-9 items-center justify-center rounded-full border border-border active:bg-muted"
         >
           <RefreshCw className={cn("size-[16px] text-foreground", spinning && "animate-spin")} />
+        </button>
+        <button
+          onClick={onOpenNotes}
+          disabled={!hasNotes}
+          className={cn(
+            "flex size-9 items-center justify-center rounded-full border border-border",
+            hasNotes ? "active:bg-muted" : "opacity-30",
+          )}
+        >
+          <StickyNote className="size-[16px] text-foreground" />
         </button>
       </div>
 

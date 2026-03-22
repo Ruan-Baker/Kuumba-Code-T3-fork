@@ -79,7 +79,8 @@
   "dependencies": {
     "@noble/ciphers": "^2.1.1",
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1"
+    "@noble/hashes": "^2.0.1",
+    "prismjs": "^1.30.0"
   },
   "trustedDependencies": [
     "onnxruntime-node"

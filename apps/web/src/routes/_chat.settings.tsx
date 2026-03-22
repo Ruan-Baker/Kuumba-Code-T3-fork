@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
@@ -300,9 +300,14 @@ function RemoteDevicesSettings({
 // ── This Device Settings ──────────────────────────────────────────────
 
 const DEVICE_ID_STORAGE_KEY = "t3code:device-id";
+const SERVER_DEVICE_ID_KEY = "t3code:server-device-id";
 
 function getOrCreateDeviceId(): string {
   try {
+    // Prefer server's stable device ID
+    const serverDeviceId = localStorage.getItem(SERVER_DEVICE_ID_KEY);
+    if (serverDeviceId) return serverDeviceId;
+
     const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
     if (existing) return existing;
     const newId = crypto.randomUUID();
@@ -328,7 +333,16 @@ function ThisDeviceSettings({
 }) {
   const [tokenVisible, setTokenVisible] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
-  const deviceId = getOrCreateDeviceId();
+  const [deviceId, setDeviceId] = useState(getOrCreateDeviceId());
+
+  // Re-check device ID periodically in case syncServerDeviceId updated it
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const current = getOrCreateDeviceId();
+      setDeviceId((prev) => prev !== current ? current : prev);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleCopyToken = async () => {
     try {
@@ -771,7 +785,7 @@ function SettingsRouteView() {
             </section>
 
             <ThisDeviceSettings
-              relayUrl={settings.relayUrl}
+              relayUrl={settings.relayUrl || "wss://kuumba-relay-server-production.up.railway.app"}
               pairingToken={settings.devicePairingToken}
               publicKey={settings.e2ePublicKey}
               pairedDevices={settings.pairedDevices}

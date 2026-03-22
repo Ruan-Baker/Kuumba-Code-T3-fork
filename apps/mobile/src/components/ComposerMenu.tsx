@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ImagePlus, Layers, MessageSquare, FileText, Lock, LockOpen, StickyNote } from "lucide-react";
+import { ImagePlus, Layers, MessageSquare, FileText, Lock, LockOpen } from "lucide-react";
 import { cn } from "~/lib/utils";
 
 interface ComposerMenuProps {
@@ -12,7 +12,6 @@ interface ComposerMenuProps {
   onSelectModel: () => void;
   onToggleInteractionMode: () => void;
   onToggleRuntimeMode: () => void;
-  onOpenNotes?: (() => void) | undefined;
 }
 
 export function ComposerMenu({
@@ -25,7 +24,6 @@ export function ComposerMenu({
   onSelectModel,
   onToggleInteractionMode,
   onToggleRuntimeMode,
-  onOpenNotes,
 }: ComposerMenuProps) {
   useEffect(() => {
     if (!open) return;
@@ -63,22 +61,14 @@ export function ComposerMenu({
           <div className="mx-3 h-px bg-border/50" />
 
           <MenuItem
-            icon={<StickyNote className="size-4" />}
-            label="Project notes"
-            disabled={!hasSession}
-            onClick={() => { onOpenNotes?.(); onClose(); }}
-          />
-
-          <div className="mx-3 h-px bg-border/50" />
-
-          <MenuItem
             icon={interactionMode === "chat"
               ? <MessageSquare className="size-4" />
               : <FileText className="size-4" />
             }
             label={interactionMode === "chat" ? "Chat mode" : "Plan mode"}
+            active={interactionMode === "plan"}
             disabled={!hasSession}
-            onClick={() => { onToggleInteractionMode(); onClose(); }}
+            onClick={() => { onToggleInteractionMode(); }}
           />
 
           <div className="mx-3 h-px bg-border/50" />
@@ -89,8 +79,9 @@ export function ComposerMenu({
               : <Lock className="size-4" />
             }
             label={runtimeMode === "full-access" ? "Full access" : "Supervised"}
+            active={runtimeMode === "approval-required"}
             disabled={!hasSession}
-            onClick={() => { onToggleRuntimeMode(); onClose(); }}
+            onClick={() => { onToggleRuntimeMode(); }}
           />
         </div>
       </div>
@@ -102,11 +93,13 @@ function MenuItem({
   icon,
   label,
   disabled,
+  active,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   disabled?: boolean | undefined;
+  active?: boolean | undefined;
   onClick: () => void;
 }) {
   return (

@@ -14,18 +14,83 @@ export interface RelayConnectionState {
   pairedDevices: PairedDevice[];
   /** Call this after sharing/unsharing a session to update the relay */
   refreshRelaySessions: () => void;
+  /** Update composer state and push to mobile devices */
+  updateComposerState: (state: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void;
+  /** Subscribe to composer state changes from mobile */
+  onComposerStateChanged: (handler: (data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) => void;
+  /** Register a live state getter so mobile can fetch the real state */
+  registerComposerStateGetter: (getter: () => { interactionMode: string; runtimeMode: string; model: string; reasoningLevel: string }) => void;
+  /** Push notes update to all connected mobile devices */
+  pushNotesSync: (cwd: string, editorState: string, timestamp: number) => void;
+  /** Subscribe to notes sync from mobile */
+  onNotesSyncReceived: (handler: (data: { cwd: string; editorState: string; timestamp: number }) => void) => void;
 }
 
 const DEVICE_ID_KEY = "t3code:device-id";
+const SERVER_DEVICE_ID_KEY = "t3code:server-device-id";
 const SETTINGS_KEY = "t3code:app-settings:v1";
 
+/**
+ * Get the stable device ID. Prefers the server's persisted deviceId
+ * (survives port changes in dev mode). Falls back to localStorage UUID.
+ */
 function getOrCreateDeviceId(): string {
+  // First check if we have the server's stable device ID
+  const serverDeviceId = localStorage.getItem(SERVER_DEVICE_ID_KEY);
+  if (serverDeviceId) return serverDeviceId;
+
+  // Fallback to the old key
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
     localStorage.setItem(DEVICE_ID_KEY, id);
   }
   return id;
+}
+
+/**
+ * Fetch the server's stable device ID and persist it.
+ * Retries until server is available (server might still be starting).
+ */
+async function syncServerDeviceId(): Promise<string | null> {
+  // If we already have it cached, return immediately
+  const cached = localStorage.getItem(SERVER_DEVICE_ID_KEY);
+  if (cached) {
+    console.log("[relay] Using cached server device ID:", cached);
+    return cached;
+  }
+
+  // Try fetching from server, with retries
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const bridgeWsUrl = window.desktopBridge?.getWsUrl?.();
+      if (!bridgeWsUrl) return null;
+
+      const url = new URL(bridgeWsUrl);
+      const protocol = url.protocol === "wss:" ? "https:" : "http:";
+      const origin = `${protocol}//${url.host}`;
+
+      const res = await fetch(`${origin}/api/device-info`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.deviceId) {
+          console.log("[relay] Synced server device ID:", data.deviceId);
+          localStorage.setItem(SERVER_DEVICE_ID_KEY, data.deviceId);
+          localStorage.setItem(DEVICE_ID_KEY, data.deviceId);
+          return data.deviceId;
+        }
+      }
+    } catch {
+      // Server not ready yet — wait and retry
+      if (attempt < 9) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }
+  console.warn("[relay] Could not sync server device ID after 10 attempts");
+  return null;
 }
 
 /** Read relay settings directly from localStorage to avoid hook dependencies */
@@ -40,7 +105,7 @@ function readRelaySettings(): {
     if (!raw) return { relayUrl: "", pairingToken: "", e2ePublicKey: "", e2ePrivateKey: "" };
     const parsed = JSON.parse(raw);
     return {
-      relayUrl: parsed.relayUrl ?? "",
+      relayUrl: parsed.relayUrl || "wss://kuumba-relay-server-production.up.railway.app",
       pairingToken: parsed.devicePairingToken ?? "",
       e2ePublicKey: parsed.e2ePublicKey ?? "",
       e2ePrivateKey: parsed.e2ePrivateKey ?? "",
@@ -108,14 +173,28 @@ async function fetchLocalDeviceInfo(): Promise<
  * Reads settings directly from localStorage (not useAppSettings) to
  * keep the hook count stable and avoid React hooks-order errors.
  */
+// Store on window so they survive HMR module replacement
+const win = window as unknown as {
+  __relayTransport?: RelayTransport | null;
+  __relayBridge?: RelayInboundBridge | null;
+  __relayConfig?: { relayUrl: string; pairingToken: string; deviceId: string };
+};
+
+function getGlobalTransport(): RelayTransport | null { return win.__relayTransport ?? null; }
+function setGlobalTransport(t: RelayTransport | null) { win.__relayTransport = t; }
+function getGlobalBridge(): RelayInboundBridge | null { return win.__relayBridge ?? null; }
+function setGlobalBridge(b: RelayInboundBridge | null) { win.__relayBridge = b; }
+function getGlobalConfig() { return win.__relayConfig ?? { relayUrl: "", pairingToken: "", deviceId: "" }; }
+function setGlobalConfig(c: { relayUrl: string; pairingToken: string; deviceId: string }) { win.__relayConfig = c; }
+
 export function useRelayConnection(): RelayConnectionState {
   const [connected, setConnected] = useState(false);
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const transportRef = useRef<RelayTransport | null>(null);
-  const configRef = useRef({ relayUrl: "", pairingToken: "", deviceId: "" });
+  const configRef = useRef(getGlobalConfig());
 
   const refreshRelaySessions = useCallback(() => {
-    const transport = transportRef.current;
+    const transport = getGlobalTransport();
     if (!transport) return;
     void fetchLocalDeviceInfo().then((sessions) => {
       console.log(`[relay] Updating relay with ${sessions.length} shared session(s)`);
@@ -123,33 +202,85 @@ export function useRelayConnection(): RelayConnectionState {
     });
   }, []);
 
+  const updateComposerState = useCallback((state: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => {
+    const bridge = getGlobalBridge();
+    if (bridge) {
+      bridge.updateComposerState(state);
+    }
+  }, []);
+
+  const onComposerStateChanged = useCallback((handler: (data: { interactionMode?: string; runtimeMode?: string; model?: string; reasoningLevel?: string }) => void) => {
+    const bridge = getGlobalBridge();
+    if (bridge) {
+      bridge.onComposerStateChanged = handler;
+    }
+  }, []);
+
+  const registerComposerStateGetter = useCallback((getter: () => { interactionMode: string; runtimeMode: string; model: string; reasoningLevel: string }) => {
+    const bridge = getGlobalBridge();
+    if (bridge) {
+      bridge.getComposerStateLive = getter;
+    }
+  }, []);
+
+  const pushNotesSync = useCallback((cwd: string, editorState: string, timestamp: number) => {
+    const bridge = getGlobalBridge();
+    if (bridge) {
+      bridge.pushNotesSync(cwd, editorState, timestamp);
+    }
+  }, []);
+
+  const onNotesSyncReceived = useCallback((handler: (data: { cwd: string; editorState: string; timestamp: number }) => void) => {
+    const bridge = getGlobalBridge();
+    if (bridge) {
+      bridge.onNotesSyncReceived = handler;
+    }
+  }, []);
+
   useEffect(() => {
+    // Sync the server's stable device ID first, then connect
+    void syncServerDeviceId().then(() => {
+      connectToRelay();
+    });
+
+    function connectToRelay() {
     const { relayUrl, pairingToken, e2ePublicKey, e2ePrivateKey } = readRelaySettings();
     const deviceId = getOrCreateDeviceId();
     const deviceName =
       typeof window !== "undefined" && window.desktopBridge ? "Desktop" : "Browser";
 
+    console.log("[relay] Using device ID:", deviceId);
+
     // Don't connect if not configured yet
     if (!relayUrl || !pairingToken) return;
 
-    // Don't reconnect if config hasn't changed
+    const gc = getGlobalConfig();
+
+    // If global transport already exists with same config AND same device ID, reuse it
     if (
-      transportRef.current &&
-      configRef.current.relayUrl === relayUrl &&
-      configRef.current.pairingToken === pairingToken &&
-      configRef.current.deviceId === deviceId
+      getGlobalTransport() &&
+      gc.relayUrl === relayUrl &&
+      gc.deviceId === deviceId &&
+      gc.pairingToken === pairingToken &&
+      gc.deviceId === deviceId
     ) {
+      transportRef.current = getGlobalTransport();
+      setPairedDevices(getGlobalTransport()?.getPairedDevices() ?? []);
       return;
     }
 
     // Dispose old transport if config changed
-    if (transportRef.current) {
-      transportRef.current.dispose();
-      transportRef.current = null;
-      setConnected(false);
+    if (getGlobalTransport()) {
+      getGlobalTransport()!.dispose();
+      setGlobalTransport(null);
+    }
+    if (getGlobalBridge()) {
+      getGlobalBridge()!.dispose();
+      setGlobalBridge(null);
     }
 
-    configRef.current = { relayUrl, pairingToken, deviceId };
+    setGlobalConfig({ relayUrl, pairingToken, deviceId });
+    configRef.current = getGlobalConfig();
 
     // Get the local server WebSocket URL for the inbound bridge
     const localWsUrl = resolveLocalServerWsUrl();
@@ -159,9 +290,6 @@ export function useRelayConnection(): RelayConnectionState {
       e2ePublicKey && e2ePrivateKey
         ? { publicKey: e2ePublicKey, privateKey: e2ePrivateKey }
         : undefined;
-
-    // Create the inbound bridge immediately so it's ready when devices pair
-    let bridge: RelayInboundBridge | null = null;
 
     const transport = new RelayTransport({
       relayUrl,
@@ -178,8 +306,8 @@ export function useRelayConnection(): RelayConnectionState {
         });
 
         // Start the inbound bridge so mobile devices can send RPC requests
-        if (localWsUrl && !bridge) {
-          bridge = new RelayInboundBridge(transport, localWsUrl);
+        if (localWsUrl && !getGlobalBridge()) {
+          setGlobalBridge(new RelayInboundBridge(transport, localWsUrl));
           console.log("[relay] Inbound bridge started for mobile RPC proxying");
         }
       },
@@ -189,43 +317,43 @@ export function useRelayConnection(): RelayConnectionState {
       },
       onPairedDevicesChanged: (devices) => {
         setPairedDevices(devices);
-        // Auto-register all paired devices with the inbound bridge
-        if (bridge) {
+        if (getGlobalBridge()) {
           for (const d of devices) {
-            bridge.addMobileDevice(d.deviceId);
+            getGlobalBridge()!.addMobileDevice(d.deviceId);
           }
         }
       },
       onMessage: (fromDeviceId, _fromDeviceName, message) => {
-        // Fallback: if the bridge exists but the device wasn't registered yet,
-        // route the message through the bridge's global handler
-        if (bridge) {
-          bridge.handleGlobalMessage(fromDeviceId, message);
+        if (getGlobalBridge()) {
+          getGlobalBridge()!.handleGlobalMessage(fromDeviceId, message);
         } else {
           console.log(`[relay] Message from ${fromDeviceId} (no bridge):`, message.slice(0, 100));
         }
       },
     });
 
+    setGlobalTransport(transport);
     transportRef.current = transport;
     void transport.connect();
 
+    } // end connectToRelay
+
+    // Don't dispose on unmount — keep alive across HMR
     return () => {
-      bridge?.dispose();
-      bridge = null;
-      transport.dispose();
-      if (transportRef.current === transport) {
-        transportRef.current = null;
-      }
-      setConnected(false);
+      transportRef.current = null;
     };
   }, []); // Run once on mount — reads settings from localStorage directly
 
   return {
-    transport: transportRef.current,
+    transport: getGlobalTransport(),
     connected,
     pairedDevices,
     refreshRelaySessions,
+    updateComposerState,
+    onComposerStateChanged,
+    registerComposerStateGetter,
+    pushNotesSync,
+    onNotesSyncReceived,
   };
 }
 
@@ -235,6 +363,11 @@ export const RelayContext = createContext<RelayConnectionState>({
   connected: false,
   pairedDevices: [],
   refreshRelaySessions: () => {},
+  updateComposerState: () => {},
+  onComposerStateChanged: () => {},
+  registerComposerStateGetter: () => {},
+  pushNotesSync: () => {},
+  onNotesSyncReceived: () => {},
 });
 
 export function useRelay(): RelayConnectionState {

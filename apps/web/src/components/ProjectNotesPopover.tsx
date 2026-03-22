@@ -1,10 +1,13 @@
-import { StickyNoteIcon, PlusIcon, XIcon, ChevronUpIcon, ChevronDownIcon } from "lucide-react";
+import { StickyNoteIcon, XIcon, GripHorizontalIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Popover, PopoverTrigger, PopoverPopup, PopoverTitle } from "./ui/popover";
-import { Checkbox } from "./ui/checkbox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarMenuAction } from "./ui/sidebar";
-import { useProjectNotesStore, type TodoItem } from "../projectNotesStore";
+import { useProjectNotesStore } from "../projectNotesStore";
+import { useNotesFloatingStore } from "../lib/notesFloatingStore";
+import { createPortal } from "react-dom";
+import { NotesEditor } from "./notes/NotesEditor";
+
+// ── Sidebar button — toggles floating notes for a project ───────────
 
 interface ProjectNotesPopoverProps {
   projectCwd: string;
@@ -12,214 +15,170 @@ interface ProjectNotesPopoverProps {
 }
 
 export function ProjectNotesPopover({ projectCwd, projectName }: ProjectNotesPopoverProps) {
-  const [open, setOpen] = useState(false);
-  const {
-    notesByCwd,
-    loadingCwds,
-    loadNotes,
-    setText,
-    addTodo,
-    toggleTodo,
-    removeTodo,
-    updateTodoLabel,
-    reorderTodos,
-  } = useProjectNotesStore();
-  const [newTodoText, setNewTodoText] = useState("");
-  const newTodoInputRef = useRef<HTMLInputElement>(null);
+  const { openProject, toggle } = useNotesFloatingStore();
+  const isOpen = openProject?.cwd === projectCwd;
 
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <SidebarMenuAction
+            render={
+              <button
+                type="button"
+                aria-label={`Notes for ${projectName}`}
+                onClick={() => toggle(projectCwd, projectName)}
+              >
+                <StickyNoteIcon className="size-3.5" />
+              </button>
+            }
+            showOnHover={!isOpen}
+            className={`top-1 right-6 size-5 rounded-md p-0 ${isOpen ? "text-primary" : "text-muted-foreground/70 hover:bg-secondary hover:text-foreground"}`}
+          />
+        }
+      />
+      <TooltipPopup side="top">Project notes</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+// ── Floating notes panel — rendered via portal ──────────────────────
+
+export function FloatingNotesPanel() {
+  const { openProject, close } = useNotesFloatingStore();
+  if (!openProject) return null;
+  return <FloatingNotesPanelInner projectCwd={openProject.cwd} projectName={openProject.name} onClose={close} />;
+}
+
+function FloatingNotesPanelInner({
+  projectCwd,
+  projectName,
+  onClose,
+}: {
+  projectCwd: string;
+  projectName: string;
+  onClose: () => void;
+}) {
+  const { notesByCwd, loadingCwds, loadNotes, setEditorState } = useProjectNotesStore();
   const notes = notesByCwd[projectCwd];
   const isLoading = loadingCwds.has(projectCwd);
-  const sortedTodos = notes ? [...notes.todos].sort((a, b) => a.order - b.order) : [];
+  const editorState = notes?.editorState ?? null;
+
+  const [pos, setPos] = useState({ x: 320, y: 80 });
+  const [size, setSize] = useState({ w: 320, h: 360 });
+
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const resizing = useRef<string | null>(null);
+  const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0, px: 0, py: 0 });
+
+  // Track editor key to remount when project changes or initial load finishes
+  const [editorKey, setEditorKey] = useState(0);
 
   useEffect(() => {
-    if (open) {
-      void loadNotes(projectCwd);
+    void loadNotes(projectCwd);
+  }, [projectCwd, loadNotes]);
+
+  // Remount editor when notes finish loading for the first time
+  const prevLoadingRef = useRef(isLoading);
+  useEffect(() => {
+    if (prevLoadingRef.current && !isLoading) {
+      setEditorKey((k) => k + 1);
     }
-  }, [open, projectCwd, loadNotes]);
+    prevLoadingRef.current = isLoading;
+  }, [isLoading]);
 
-  const handleAddTodo = useCallback(() => {
-    const label = newTodoText.trim();
-    if (!label) return;
-    addTodo(projectCwd, label);
-    setNewTodoText("");
-    // Focus back to input for rapid entry
-    setTimeout(() => newTodoInputRef.current?.focus(), 0);
-  }, [newTodoText, projectCwd, addTodo]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleAddTodo();
-      }
+  const handleChange = useCallback(
+    (serialized: string) => {
+      setEditorState(projectCwd, serialized);
     },
-    [handleAddTodo],
+    [projectCwd, setEditorState],
   );
 
-  const handleMoveTodo = useCallback(
-    (todoId: string, direction: "up" | "down") => {
-      const index = sortedTodos.findIndex((t) => t.id === todoId);
-      if (index < 0) return;
-      const newIndex = direction === "up" ? index - 1 : index + 1;
-      if (newIndex < 0 || newIndex >= sortedTodos.length) return;
-      const ids = sortedTodos.map((t) => t.id);
-      // Swap
-      [ids[index], ids[newIndex]] = [ids[newIndex]!, ids[index]!];
-      reorderTodos(projectCwd, ids);
-    },
-    [sortedTodos, projectCwd, reorderTodos],
-  );
+  // ── Drag ───────────────────────────────────────────────────────────
 
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <SidebarMenuAction
-                  render={
-                    <button type="button" aria-label={`Notes for ${projectName}`}>
-                      <StickyNoteIcon className="size-3.5" />
-                    </button>
-                  }
-                  showOnHover
-                  className="top-1 right-6 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
-                />
-              }
-            />
-          }
-        />
-        <TooltipPopup side="top">Project notes</TooltipPopup>
-      </Tooltip>
-      <PopoverPopup side="right" align="start" sideOffset={8} className="w-80 max-h-[480px]">
-        <div className="flex flex-col gap-3">
-          <PopoverTitle className="text-sm font-semibold truncate">
-            Notes: {projectName}
-          </PopoverTitle>
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      setPos({ x: Math.max(0, ev.clientX - dragOffset.current.x), y: Math.max(0, ev.clientY - dragOffset.current.y) });
+    };
+    const onUp = () => { dragging.current = false; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [pos]);
 
-          {isLoading && !notes ? (
-            <p className="text-xs text-muted-foreground">Loading...</p>
-          ) : (
-            <>
-              {/* Free-form text notes */}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Notes
-                </label>
-                <textarea
-                  className="w-full min-h-[80px] max-h-[200px] resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="Type your notes here..."
-                  value={notes?.text ?? ""}
-                  onChange={(e) => setText(projectCwd, e.target.value)}
-                />
-              </div>
+  // ── Resize ─────────────────────────────────────────────────────────
 
-              {/* Checklist */}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Checklist
-                </label>
-                <div className="flex flex-col gap-1">
-                  {sortedTodos.map((todo, index) => (
-                    <TodoRow
-                      key={todo.id}
-                      todo={todo}
-                      isFirst={index === 0}
-                      isLast={index === sortedTodos.length - 1}
-                      onToggle={() => toggleTodo(projectCwd, todo.id)}
-                      onRemove={() => removeTodo(projectCwd, todo.id)}
-                      onLabelChange={(label) => updateTodoLabel(projectCwd, todo.id, label)}
-                      onMove={(dir) => handleMoveTodo(todo.id, dir)}
-                    />
-                  ))}
-                </div>
+  const onResizeStart = useCallback((e: React.MouseEvent, handle: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizing.current = handle;
+    resizeStart.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h, px: pos.x, py: pos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizing.current) return;
+      const dx = ev.clientX - resizeStart.current.x;
+      const dy = ev.clientY - resizeStart.current.y;
+      const h = resizing.current;
+      let newW = resizeStart.current.w, newH = resizeStart.current.h, newX = resizeStart.current.px, newY = resizeStart.current.py;
+      if (h.includes("e")) newW = Math.max(240, resizeStart.current.w + dx);
+      if (h.includes("w")) { newW = Math.max(240, resizeStart.current.w - dx); newX = resizeStart.current.px + dx; }
+      if (h.includes("s")) newH = Math.max(200, resizeStart.current.h + dy);
+      if (h.includes("n")) { newH = Math.max(200, resizeStart.current.h - dy); newY = resizeStart.current.py + dy; }
+      setSize({ w: newW, h: newH });
+      setPos({ x: Math.max(0, newX), y: Math.max(0, newY) });
+    };
+    const onUp = () => { resizing.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [size, pos]);
 
-                {/* Add new todo */}
-                <div className="flex items-center gap-1 mt-1.5">
-                  <input
-                    ref={newTodoInputRef}
-                    className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="Add item..."
-                    value={newTodoText}
-                    onChange={(e) => setNewTodoText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                  <button
-                    type="button"
-                    className="flex items-center justify-center size-6 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    onClick={handleAddTodo}
-                    aria-label="Add todo item"
-                  >
-                    <PlusIcon className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </PopoverPopup>
-    </Popover>
-  );
-}
+  const edge = "4px";
+  const corner = "8px";
 
-interface TodoRowProps {
-  todo: TodoItem;
-  isFirst: boolean;
-  isLast: boolean;
-  onToggle: () => void;
-  onRemove: () => void;
-  onLabelChange: (label: string) => void;
-  onMove: (direction: "up" | "down") => void;
-}
-
-function TodoRow({
-  todo,
-  isFirst,
-  isLast,
-  onToggle,
-  onRemove,
-  onLabelChange,
-  onMove,
-}: TodoRowProps) {
-  return (
-    <div className="group/todo flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-secondary/50">
-      <Checkbox checked={todo.done} onCheckedChange={onToggle} className="shrink-0" />
-      <input
-        className={`flex-1 min-w-0 bg-transparent text-xs text-foreground focus:outline-none ${
-          todo.done ? "line-through text-muted-foreground" : ""
-        }`}
-        value={todo.label}
-        onChange={(e) => onLabelChange(e.target.value)}
-      />
-      <div className="flex items-center opacity-0 group-hover/todo:opacity-100 transition-opacity">
-        <button
-          type="button"
-          className="size-4 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
-          onClick={() => onMove("up")}
-          disabled={isFirst}
-          aria-label="Move up"
-        >
-          <ChevronUpIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          className="size-4 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
-          onClick={() => onMove("down")}
-          disabled={isLast}
-          aria-label="Move down"
-        >
-          <ChevronDownIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          className="size-4 flex items-center justify-center text-muted-foreground hover:text-destructive"
-          onClick={onRemove}
-          aria-label="Remove todo"
-        >
-          <XIcon className="size-3" />
+  return createPortal(
+    <div
+      className="fixed z-50 flex flex-col rounded-xl border border-border bg-card shadow-2xl shadow-black/20 overflow-hidden"
+      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 cursor-grab active:cursor-grabbing select-none border-b border-border/50 bg-muted/30 shrink-0"
+        onMouseDown={onDragStart}
+      >
+        <GripHorizontalIcon className="size-3 text-muted-foreground/40 shrink-0" />
+        <span className="text-[13px] font-medium text-foreground truncate flex-1">{projectName}</span>
+        <button type="button" onClick={onClose} onMouseDown={(e) => e.stopPropagation()} className="flex items-center justify-center size-5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-secondary/60 transition-colors" aria-label="Close notes">
+          <XIcon className="size-3.5" />
         </button>
       </div>
-    </div>
+
+      {/* Editor */}
+      {isLoading && !notes ? (
+        <div className="flex-1 flex items-center justify-center"><p className="text-xs text-muted-foreground">Loading...</p></div>
+      ) : (
+        <NotesEditor
+          key={editorKey}
+          initialEditorState={editorState}
+          externalState={editorState}
+          onChange={handleChange}
+          toolbarSize="compact"
+          autoFocus
+        />
+      )}
+
+      {/* Resize handles */}
+      <div className="absolute top-0 left-0 right-0 cursor-n-resize z-10" style={{ height: edge }} onMouseDown={(e) => onResizeStart(e, "n")} />
+      <div className="absolute bottom-0 left-0 right-0 cursor-s-resize z-10" style={{ height: edge }} onMouseDown={(e) => onResizeStart(e, "s")} />
+      <div className="absolute top-0 left-0 bottom-0 cursor-w-resize z-10" style={{ width: edge }} onMouseDown={(e) => onResizeStart(e, "w")} />
+      <div className="absolute top-0 right-0 bottom-0 cursor-e-resize z-10" style={{ width: edge }} onMouseDown={(e) => onResizeStart(e, "e")} />
+      <div className="absolute top-0 left-0 cursor-nw-resize z-10" style={{ width: corner, height: corner }} onMouseDown={(e) => onResizeStart(e, "nw")} />
+      <div className="absolute top-0 right-0 cursor-ne-resize z-10" style={{ width: corner, height: corner }} onMouseDown={(e) => onResizeStart(e, "ne")} />
+      <div className="absolute bottom-0 left-0 cursor-sw-resize z-10" style={{ width: corner, height: corner }} onMouseDown={(e) => onResizeStart(e, "sw")} />
+      <div className="absolute bottom-0 right-0 cursor-se-resize z-10" style={{ width: corner, height: corner }} onMouseDown={(e) => onResizeStart(e, "se")} />
+    </div>,
+    document.body,
   );
 }

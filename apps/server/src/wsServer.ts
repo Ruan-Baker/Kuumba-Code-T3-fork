@@ -1015,6 +1015,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           issues: keybindingsConfig.issues,
           providers: providerStatuses,
           availableEditors,
+          deviceId: serverConfig.deviceId,
+          deviceName: serverConfig.deviceName,
         };
 
       case WS_METHODS.serverUpsertKeybinding: {

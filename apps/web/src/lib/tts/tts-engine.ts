@@ -8,11 +8,11 @@
 import type { DesktopRendererLogEntry } from "@t3tools/contracts";
 import { logRendererDiagnostic } from "../rendererDiagnostics";
 
-export const SPEED_STEPS = [0.85, 1, 1.25, 1.5, 2] as const;
+export const SPEED_STEPS = [1, 1.25, 1.5, 2] as const;
 export type PlaybackSpeed = (typeof SPEED_STEPS)[number];
 
 let currentAudio: HTMLAudioElement | null = null;
-let currentSpeed: PlaybackSpeed = 0.85;
+let currentSpeed: PlaybackSpeed = 1;
 let stopRequested = false;
 
 type StatusCallback = (status: TTSStatus) => void;
@@ -52,23 +52,27 @@ export async function speak(
     const chunks = splitIntoChunks(text);
     if (chunks.length === 0) return;
 
-    // Synthesise chunks progressively via server
+    // Synthesise chunks progressively — pipeline 2 ahead for faster playback
     const wavCache: Blob[] = [];
     let fetchIndex = 0;
     let fetchDone = false;
     let fetchError: Error | null = null;
 
+    const fetchOne = async () => {
+      if (fetchIndex >= chunks.length || stopRequested) return;
+      const idx = fetchIndex++;
+      try {
+        const wav = await synthesizeOnServer(chunks[idx]!);
+        if (!stopRequested) wavCache.push(wav);
+      } catch (err) {
+        fetchError = err instanceof Error ? err : new Error(String(err));
+      }
+    };
+
     const fetchNext = async () => {
+      // Start 2 fetches in parallel for pipelining
       while (fetchIndex < chunks.length && !stopRequested) {
-        const idx = fetchIndex++;
-        try {
-          const wav = await synthesizeOnServer(chunks[idx]!);
-          if (stopRequested) return;
-          wavCache.push(wav);
-        } catch (err) {
-          fetchError = err instanceof Error ? err : new Error(String(err));
-          return;
-        }
+        await fetchOne();
       }
       fetchDone = true;
     };

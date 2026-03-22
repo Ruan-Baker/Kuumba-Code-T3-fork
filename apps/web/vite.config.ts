@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     include: ["@pierre/diffs", "@pierre/diffs/react", "@pierre/diffs/worker/worker.js"],
-    exclude: ["onnxruntime-web"],
+    exclude: ["onnxruntime-web", "prismjs"],
   },
   define: {
     // In dev mode, tell the web app where the WebSocket server lives

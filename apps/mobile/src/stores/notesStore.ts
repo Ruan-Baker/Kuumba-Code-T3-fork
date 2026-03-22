@@ -4,28 +4,31 @@
  */
 import { create } from "zustand";
 import { WS_METHODS } from "@t3tools/contracts";
+import { migrateV1ToV2 } from "~/components/notes/notesMigration";
 
 interface Transport {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
 }
 
-export interface TodoItem {
-  id: string;
-  label: string;
-  done: boolean;
-  order: number;
-}
-
 export interface ProjectNotesData {
-  version: 1;
-  text: string;
-  todos: TodoItem[];
+  version: 2;
+  editorState: string | null; // JSON-stringified Lexical EditorState
+  todos: never[];
 }
 
 const NOTES_PATH = ".kuumbacode/notes.json";
 
 function createEmpty(): ProjectNotesData {
-  return { version: 1, text: "", todos: [] };
+  return { version: 2, editorState: null, todos: [] };
+}
+
+// ── Real-time sync push ──────────────────────────────────────────────
+
+type NotesPushFn = (cwd: string, editorState: string, timestamp: number) => void;
+let notesPushHandler: NotesPushFn | null = null;
+
+export function setMobileNotesPushHandler(handler: NotesPushFn | null): void {
+  notesPushHandler = handler;
 }
 
 interface NotesState {
@@ -35,12 +38,8 @@ interface NotesState {
 
   load: (transport: Transport, cwd: string) => Promise<void>;
   save: (transport: Transport, cwd: string) => Promise<void>;
-  setText: (text: string) => void;
-  addTodo: (label: string) => void;
-  toggleTodo: (id: string) => void;
-  removeTodo: (id: string) => void;
-  updateTodoLabel: (id: string, label: string) => void;
-  moveTodo: (id: string, direction: "up" | "down") => void;
+  setEditorState: (editorState: string) => void;
+  setEditorStateFromRemote: (editorState: string) => void;
   reset: () => void;
 }
 
@@ -57,20 +56,30 @@ export const useNotesStore = create<NotesState>()((set, get) => ({
         { cwd, relativePath: NOTES_PATH },
       );
       let notes: ProjectNotesData;
-      if (result.contents) {
+      if (result?.contents) {
         try {
           const parsed = JSON.parse(result.contents);
-          notes = {
-            version: 1,
-            text: typeof parsed.text === "string" ? parsed.text : "",
-            todos: Array.isArray(parsed.todos)
-              ? parsed.todos.filter(
-                  (t: unknown): t is TodoItem =>
-                    typeof t === "object" && t !== null &&
-                    "id" in t && "label" in t && "done" in t && "order" in t,
-                )
-              : [],
-          };
+
+          if (parsed.version === 2) {
+            notes = {
+              version: 2,
+              editorState: typeof parsed.editorState === "string" ? parsed.editorState : null,
+              todos: [],
+            };
+          } else {
+            // v1 migration
+            const oldText = typeof parsed.text === "string" ? parsed.text : "";
+            let editorState: string | null = null;
+            if (oldText) {
+              try {
+                const migrated = migrateV1ToV2(oldText);
+                editorState = JSON.stringify(migrated);
+              } catch {
+                editorState = null;
+              }
+            }
+            notes = { version: 2, editorState, todos: [] };
+          }
         } catch {
           notes = createEmpty();
         }
@@ -97,68 +106,21 @@ export const useNotesStore = create<NotesState>()((set, get) => ({
       // silent
     }
     set({ saving: false });
+
+    // Push to desktop
+    if (notesPushHandler && notes.editorState) {
+      notesPushHandler(cwd, notes.editorState, Date.now());
+    }
   },
 
-  setText: (text) => set((s) => ({
-    notes: s.notes ? { ...s.notes, text } : null,
+  setEditorState: (editorState) => set((s) => ({
+    notes: s.notes ? { ...s.notes, editorState } : null,
   })),
 
-  addTodo: (label) => set((s) => {
-    if (!s.notes) return s;
-    const maxOrder = s.notes.todos.reduce((m, t) => Math.max(m, t.order), -1);
-    return {
-      notes: {
-        ...s.notes,
-        todos: [...s.notes.todos, {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          label,
-          done: false,
-          order: maxOrder + 1,
-        }],
-      },
-    };
-  }),
-
-  toggleTodo: (id) => set((s) => ({
-    notes: s.notes ? {
-      ...s.notes,
-      todos: s.notes.todos.map((t) => t.id === id ? { ...t, done: !t.done } : t),
-    } : null,
+  /** Update from remote — does NOT trigger push back. */
+  setEditorStateFromRemote: (editorState) => set((s) => ({
+    notes: s.notes ? { ...s.notes, editorState } : null,
   })),
-
-  removeTodo: (id) => set((s) => ({
-    notes: s.notes ? {
-      ...s.notes,
-      todos: s.notes.todos.filter((t) => t.id !== id),
-    } : null,
-  })),
-
-  updateTodoLabel: (id, label) => set((s) => ({
-    notes: s.notes ? {
-      ...s.notes,
-      todos: s.notes.todos.map((t) => t.id === id ? { ...t, label } : t),
-    } : null,
-  })),
-
-  moveTodo: (id, direction) => set((s) => {
-    if (!s.notes) return s;
-    const sorted = [...s.notes.todos].sort((a, b) => a.order - b.order);
-    const idx = sorted.findIndex((t) => t.id === id);
-    if (idx < 0) return s;
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= sorted.length) return s;
-    const ids = sorted.map((t) => t.id);
-    [ids[idx], ids[swapIdx]] = [ids[swapIdx]!, ids[idx]!];
-    return {
-      notes: {
-        ...s.notes,
-        todos: s.notes.todos.map((t) => {
-          const newOrder = ids.indexOf(t.id);
-          return newOrder >= 0 ? { ...t, order: newOrder } : t;
-        }),
-      },
-    };
-  }),
 
   reset: () => set({ notes: null, loading: false, saving: false }),
 }));

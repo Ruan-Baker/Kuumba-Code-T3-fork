@@ -14,6 +14,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["@huggingface/transformers"],
+    exclude: ["prismjs"],
   },
   server: {
     port: 5734,

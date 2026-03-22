@@ -12,6 +12,8 @@ import { useDevicesStore } from "~/stores/devicesStore";
 import { useConnectionStore } from "~/stores/connectionStore";
 import { useSession } from "~/lib/useSession";
 import { NotesModal } from "~/components/NotesModal";
+import { useNotesStore, setMobileNotesPushHandler } from "~/stores/notesStore";
+import { RelayTransport } from "~/lib/relayTransport";
 
 export const Route = createFileRoute("/")({
   component: ChatView,
@@ -27,11 +29,12 @@ function ChatView() {
   const [provider, setProvider] = useState<"claudeAgent" | "codex">("claudeAgent");
   const [interactionMode, setInteractionMode] = useState<"chat" | "plan">("chat");
   const [runtimeMode, setRuntimeMode] = useState<"full-access" | "approval-required">("full-access");
+  const [fastMode, setFastMode] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
   const savedDevices = useSettingsStore((s) => s.savedDevices);
   const { devices, refreshAll } = useDevicesStore();
-  const { activeDeviceId, setActiveDevice, connect, disconnect, getActiveTransport } =
+  const { activeDeviceId, setActiveDevice, connect, disconnect, getActiveTransport, setModeSyncHandler } =
     useConnectionStore();
 
   // Poll direct devices + auto-connect relay devices
@@ -61,10 +64,110 @@ function ChatView() {
     };
   }, [doPoll]);
 
+  // Restore session after hard reload (from refresh button)
+  useEffect(() => {
+    const restoreDevice = sessionStorage.getItem("kuumba-restore-device");
+    const restoreThread = sessionStorage.getItem("kuumba-restore-thread");
+    if (restoreDevice && restoreThread) {
+      sessionStorage.removeItem("kuumba-restore-device");
+      sessionStorage.removeItem("kuumba-restore-thread");
+      // Wait a bit for relay to connect, then restore
+      setTimeout(() => {
+        const device = savedDevices.find((d) => d.id === restoreDevice);
+        if (device) {
+          connect(device);
+          setActiveDevice(restoreDevice);
+          setActiveThreadId(restoreThread);
+        }
+      }, 2000);
+    }
+  }, []);
+
+  // Send composer state change to desktop via RPC
+  const sendComposerState = useCallback((patch: Record<string, string>) => {
+    const t = getActiveTransport();
+    if (!t) return;
+    void t.request("composer.setState", patch).catch((err: unknown) => {
+      console.warn("[App] composer.setState failed:", err);
+    });
+  }, [getActiveTransport]);
+
+  // Listen for mode sync from desktop
+  useEffect(() => {
+    setModeSyncHandler((data: Record<string, unknown>) => {
+      console.log("[App] Mode sync from desktop:", data);
+      // Only sync modes — not model/provider (those are per-session, desktop might be viewing a different one)
+      if (data.interactionMode) {
+        setInteractionMode(data.interactionMode === "plan" ? "plan" : "chat");
+      }
+      if (data.runtimeMode) {
+        setRuntimeMode(data.runtimeMode as "full-access" | "approval-required");
+      }
+      if (data.reasoningLevel) {
+        setReasoningLevel(data.reasoningLevel as string);
+      }
+      if (data.fastMode !== undefined) {
+        setFastMode(data.fastMode === true || data.fastMode === "true");
+      }
+    });
+    return () => setModeSyncHandler(null);
+  }, [setModeSyncHandler]);
+
+  // detectProvider helper — used after session hook
+  function detectProvider(model: string): "claudeAgent" | "codex" {
+    if (model.startsWith("claude-") || model.startsWith("claude_")) return "claudeAgent";
+    if (model.startsWith("gpt-") || model.startsWith("codex") || model.startsWith("o1") || model.startsWith("o3")) return "codex";
+    return "codex";
+  }
+
+  // Wire up real-time notes sync
+  const { setNotesSyncHandler } = useConnectionStore();
+  useEffect(() => {
+    // Desktop → Mobile: receive notes updates from desktop
+    setNotesSyncHandler((data) => {
+      useNotesStore.getState().setEditorStateFromRemote(data.editorState);
+    });
+
+    // Mobile → Desktop: push notes updates to desktop via relay
+    setMobileNotesPushHandler((cwd, editorState, timestamp) => {
+      const t = getActiveTransport();
+      if (t && t instanceof RelayTransport) {
+        void t.sendNotesSync(cwd, editorState, timestamp);
+      }
+    });
+
+    return () => {
+      setNotesSyncHandler(null);
+      setMobileNotesPushHandler(null);
+    };
+  }, [setNotesSyncHandler, getActiveTransport]);
+
   // Session hook
   const transport = getActiveTransport();
   console.log("[App] render: activeDeviceId=", activeDeviceId, "activeThreadId=", activeThreadId, "transport=", !!transport);
   const session = useSession(transport, activeThreadId);
+
+  // Detect provider and model from thread data + fetch modes from desktop
+  useEffect(() => {
+    const t = getActiveTransport();
+    if (!t || !activeThreadId) return;
+
+    // Detect provider from the thread's model
+    const threadModel = session.thread?.model;
+    if (threadModel) {
+      const detectedProvider = detectProvider(threadModel);
+      setProvider(detectedProvider);
+      setSelectedModel(threadModel);
+    }
+
+    // Fetch modes from desktop (plan/chat, supervised/full-access, reasoning)
+    void t.request<Record<string, unknown>>("composer.getState").then((state) => {
+      if (state.interactionMode) setInteractionMode(state.interactionMode === "plan" ? "plan" : "chat");
+      if (state.runtimeMode) setRuntimeMode(state.runtimeMode as "full-access" | "approval-required");
+      if (state.reasoningLevel) setReasoningLevel(state.reasoningLevel as string);
+      if (state.fastMode !== undefined) setFastMode(state.fastMode === true || state.fastMode === "true");
+    }).catch(() => {});
+  }, [activeThreadId, session.thread?.model]);
 
   const { relayDevices } = useConnectionStore();
 
@@ -126,9 +229,17 @@ function ChatView() {
 
   const activeDevice = activeDeviceId ? devices[activeDeviceId] : undefined;
   const activeSavedDevice = savedDevices.find((d) => d.id === activeDeviceId);
-  const isStreaming = session.messages.some((m) => m.streaming);
+  const [waitingForResponse, setWaitingForResponse] = useState(false);
+  const isStreaming = waitingForResponse || session.messages.some((m) => m.streaming);
   const hasSession = activeThreadId != null && session.thread != null;
   const activeApproval = session.pendingApprovals[0];
+
+  // Clear waitingForResponse once we get a streaming assistant message
+  useEffect(() => {
+    if (waitingForResponse && session.messages.some((m) => m.role === "assistant" && m.streaming)) {
+      setWaitingForResponse(false);
+    }
+  }, [waitingForResponse, session.messages]);
 
   function handleSelectSession(deviceId: string, threadId: string) {
     const device = savedDevices.find((d) => d.id === deviceId)
@@ -152,25 +263,27 @@ function ChatView() {
         hasActiveSession={hasSession}
         onSelectSession={handleSelectSession}
         onRefresh={() => {
-          // Re-poll direct devices
+          // Save current session state so we reconnect after reload
+          if (activeDeviceId && activeThreadId) {
+            sessionStorage.setItem("kuumba-restore-device", activeDeviceId);
+            sessionStorage.setItem("kuumba-restore-thread", activeThreadId);
+          }
+          // Hard reload like Ctrl+Shift+R
+          window.location.reload();
+          return;
+          // Dead code below — kept for reference
           doPoll();
-          // Reconnect relay devices
           for (const device of savedDevices) {
             if (device.isRelay) {
-              disconnect(device.id);
-              connectedRelayIds.current.delete(device.id);
-            }
-          }
-          // They'll auto-reconnect via the useEffect
-          setTimeout(() => {
-            for (const device of savedDevices) {
-              if (device.isRelay && !connectedRelayIds.current.has(device.id)) {
-                connectedRelayIds.current.add(device.id);
-                connect(device);
+              const t = getActiveTransport();
+              if (t && "queryDevices" in t && typeof (t as any).queryDevices === "function") {
+                (t as any).queryDevices();
               }
             }
-          }, 500);
+          }
         }}
+        onOpenNotes={() => setNotesOpen(true)}
+        hasNotes={hasSession}
       />
 
       {/* Content area */}
@@ -219,6 +332,9 @@ function ChatView() {
         </main>
       )}
 
+      {/* Working indicator — matches desktop style */}
+      {hasSession && isStreaming && <WorkingIndicator />}
+
       <Composer
         disabled={!hasSession}
         hasSession={hasSession}
@@ -227,13 +343,21 @@ function ChatView() {
         placeholder={hasSession ? "Ask anything, @tag files..." : "Connect a device to start..."}
         interactionMode={interactionMode}
         runtimeMode={runtimeMode}
-        onSend={(text) => session.sendMessage(text)}
+        onSend={(text, images) => { setWaitingForResponse(true); session.sendMessage(text, images, { runtimeMode, interactionMode, provider }); }}
         onStop={session.stopTurn}
         onModelPickerOpen={() => setModelPickerOpen(true)}
         onOpenNotes={() => setNotesOpen(true)}
         projectContext={session.thread?.projectName}
-        onToggleInteractionMode={() => setInteractionMode((m) => (m === "chat" ? "plan" : "chat"))}
-        onToggleRuntimeMode={() => setRuntimeMode((m) => (m === "full-access" ? "approval-required" : "full-access"))}
+        onToggleInteractionMode={() => {
+          const newMode = interactionMode === "chat" ? "plan" : "chat";
+          setInteractionMode(newMode);
+          sendComposerState({ interactionMode: newMode === "plan" ? "plan" : "default" });
+        }}
+        onToggleRuntimeMode={() => {
+          const newMode = runtimeMode === "full-access" ? "approval-required" : "full-access";
+          setRuntimeMode(newMode);
+          sendComposerState({ runtimeMode: newMode });
+        }}
         approvalPanel={
           activeApproval ? (
             <ApprovalPanel
@@ -254,8 +378,10 @@ function ChatView() {
         provider={provider}
         selectedModel={selectedModel}
         reasoningLevel={reasoningLevel}
-        onSelectModel={setSelectedModel}
-        onReasoningLevelChange={setReasoningLevel}
+        fastMode={fastMode}
+        onSelectModel={(model) => { setSelectedModel(model); sendComposerState({ model }); }}
+        onReasoningLevelChange={(level) => { setReasoningLevel(level); sendComposerState({ reasoningLevel: level }); }}
+        onFastModeChange={(enabled) => { setFastMode(enabled); sendComposerState({ fastMode: enabled ? "true" : "false" }); }}
       />
 
       <NotesModal
@@ -265,6 +391,32 @@ function ChatView() {
         projectCwd={session.thread?.projectCwd ?? ""}
         projectName={session.thread?.projectName ?? ""}
       />
+    </div>
+  );
+}
+
+function WorkingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex items-center gap-2.5 px-4 py-2.5">
+      <div className="flex gap-[3px]">
+        <span className="size-[5px] rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+        <span className="size-[5px] rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+        <span className="size-[5px] rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+      </div>
+      <span className="text-xs text-muted-foreground/60">
+        Working for {elapsed}s
+      </span>
     </div>
   );
 }

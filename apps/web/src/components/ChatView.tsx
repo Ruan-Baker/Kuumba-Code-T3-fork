@@ -103,12 +103,15 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  FileTextIcon,
   ListTodoIcon,
   LockIcon,
   LockOpenIcon,
+  MessageSquareIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { useRelay } from "../lib/useRelayConnection";
 import { Separator } from "./ui/separator";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { cn, randomUUID } from "~/lib/utils";
@@ -270,6 +273,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const setComposerDraftProvider = useComposerDraftStore((store) => store.setProvider);
   const setComposerDraftModel = useComposerDraftStore((store) => store.setModel);
+  const setComposerDraftModelOptions = useComposerDraftStore((store) => store.setModelOptions);
   const setComposerDraftRuntimeMode = useComposerDraftStore((store) => store.setRuntimeMode);
   const setComposerDraftInteractionMode = useComposerDraftStore(
     (store) => store.setInteractionMode,
@@ -1609,14 +1613,91 @@ export default function ChatView({ threadId }: ChatViewProps) {
       threadId,
     ],
   );
+  const { updateComposerState, onComposerStateChanged, registerComposerStateGetter } = useRelay();
+
+  // Store live composer state on window so the inbound bridge can always read it
+  const selectedPromptEffortForSync = selectedCodexEffort ?? selectedClaudeBaseEffort ?? "high";
+  useEffect(() => {
+    const currentFastMode = selectedProvider === "codex"
+      ? (draftModelOptions?.codex?.fastMode === true)
+      : (draftModelOptions?.claudeAgent?.fastMode === true);
+    (window as any).__composerState = {
+      interactionMode,
+      runtimeMode,
+      model: selectedModel,
+      reasoningLevel: selectedPromptEffortForSync,
+      provider: selectedProvider,
+      fastMode: currentFastMode,
+    };
+  }, [interactionMode, runtimeMode, selectedModel, selectedPromptEffortForSync, selectedProvider, draftModelOptions]);
+
+  // Push full composer state to mobile when any setting changes
+  const currentFastModeForSync = selectedProvider === "codex"
+    ? (draftModelOptions?.codex?.fastMode === true)
+    : (draftModelOptions?.claudeAgent?.fastMode === true);
+  useEffect(() => {
+    updateComposerState({
+      interactionMode,
+      runtimeMode,
+      model: selectedModel,
+      reasoningLevel: selectedPromptEffortForSync,
+    });
+  }, [interactionMode, runtimeMode, selectedModel, selectedPromptEffortForSync, currentFastModeForSync, updateComposerState]);
+
   const toggleInteractionMode = useCallback(() => {
-    handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
+    const newInteraction = interactionMode === "plan" ? "default" : "plan";
+    handleInteractionModeChange(newInteraction);
   }, [handleInteractionModeChange, interactionMode]);
+
   const toggleRuntimeMode = useCallback(() => {
-    void handleRuntimeModeChange(
-      runtimeMode === "full-access" ? "approval-required" : "full-access",
-    );
+    const newRuntime = runtimeMode === "full-access" ? "approval-required" : "full-access";
+    void handleRuntimeModeChange(newRuntime);
   }, [handleRuntimeModeChange, runtimeMode]);
+
+  // Listen for composer state changes from mobile
+  useEffect(() => {
+    const handler = (data: Record<string, unknown>) => {
+      console.log("[ChatView] Composer state changed from mobile:", data);
+      if (data.interactionMode !== undefined) {
+        handleInteractionModeChange(data.interactionMode === "plan" ? "plan" : "default");
+      }
+      if (data.runtimeMode !== undefined) {
+        void handleRuntimeModeChange(data.runtimeMode as "full-access" | "approval-required");
+      }
+      if (data.model !== undefined) {
+        setComposerDraftModel(threadId, data.model);
+      }
+      if (data.reasoningLevel !== undefined) {
+        const currentProvider = (window as any).__composerState?.provider ?? selectedProvider;
+        if (currentProvider === "codex") {
+          setComposerDraftModelOptions(threadId, {
+            codex: { reasoningEffort: data.reasoningLevel as any },
+          });
+        } else {
+          setComposerDraftModelOptions(threadId, {
+            claudeAgent: { effort: data.reasoningLevel as any },
+          });
+        }
+      }
+      if ((data as any).fastMode !== undefined) {
+        const fm = (data as any).fastMode === "true" || (data as any).fastMode === true;
+        const currentProvider = (window as any).__composerState?.provider ?? selectedProvider;
+        if (currentProvider === "codex") {
+          setComposerDraftModelOptions(threadId, {
+            codex: { fastMode: fm },
+          });
+        } else {
+          setComposerDraftModelOptions(threadId, {
+            claudeAgent: { fastMode: fm },
+          });
+        }
+      }
+    };
+    // Register on the bridge AND on window (window survives bridge recreation)
+    onComposerStateChanged(handler);
+    (window as any).__onComposerStateChanged = handler;
+    return () => { (window as any).__onComposerStateChanged = null; };
+  }, [onComposerStateChanged, handleInteractionModeChange, handleRuntimeModeChange, threadId, selectedProvider, setComposerDraftModelOptions]);
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
       if (open) {
@@ -3874,7 +3955,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   : "Default mode — click to enter plan mode"
                               }
                             >
-                              {interactionMode === "plan" ? "Plan" : "Chat"}
+                              {interactionMode === "plan" ? (
+                                <><FileTextIcon className="mr-1 inline size-3.5" />Plan</>
+                              ) : (
+                                <><MessageSquareIcon className="mr-1 inline size-3.5" />Chat</>
+                              )}
                             </Button>
 
                             <Separator
@@ -3900,7 +3985,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   : "Approval required — click for full access"
                               }
                             >
-                              {runtimeMode === "full-access" ? "Full access" : "Supervised"}
+                              {runtimeMode === "full-access" ? (
+                                <><LockOpenIcon className="mr-1 inline size-3.5" />Full access</>
+                              ) : (
+                                <><LockIcon className="mr-1 inline size-3.5" />Supervised</>
+                              )}
                             </Button>
 
                             {activePlan || sidebarProposedPlan || planSidebarOpen ? (
