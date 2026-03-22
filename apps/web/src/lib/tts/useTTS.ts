@@ -108,7 +108,10 @@ export function useTTS() {
           if (serverStatus.error) {
             safeSetStatus({ state: "error", error: `Voice model failed: ${serverStatus.error}` });
           } else if (serverStatus.loading) {
-            safeSetStatus({ state: "error", error: "Voice model is still loading. Try again in a few seconds." });
+            safeSetStatus({
+              state: "error",
+              error: "Voice model is still loading. Try again in a few seconds.",
+            });
           } else {
             safeSetStatus({ state: "needs-download" });
           }

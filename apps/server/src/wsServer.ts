@@ -501,6 +501,35 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           return;
         }
 
+        // TTS retry endpoint — re-attempt model loading after failure
+        if (url.pathname === "/api/tts-retry" && req.method === "POST") {
+          void (async () => {
+            try {
+              const { retryTTS, getTTSStatus } = await import("./ttsService.js");
+              await retryTTS();
+              const status = getTTSStatus();
+              respond(
+                200,
+                {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+                JSON.stringify(status),
+              );
+            } catch {
+              respond(
+                200,
+                {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+                JSON.stringify({ ready: false, loading: false, error: "TTS retry failed" }),
+              );
+            }
+          })();
+          return;
+        }
+
         // TTS synthesis endpoint — uses Kokoro with native ONNX runtime
         if (url.pathname === "/api/tts" && req.method === "POST") {
           let body = "";
@@ -556,7 +585,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
         // CORS preflight for TTS endpoints
         if (
-          (url.pathname === "/api/tts" || url.pathname === "/api/tts-status") &&
+          (url.pathname === "/api/tts" ||
+            url.pathname === "/api/tts-status" ||
+            url.pathname === "/api/tts-retry") &&
           req.method === "OPTIONS"
         ) {
           respond(204, {

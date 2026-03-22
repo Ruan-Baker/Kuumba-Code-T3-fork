@@ -51,7 +51,24 @@ export function isKokoroCached(): boolean {
   return false;
 }
 export function deleteKokoroCache(): void {}
-export async function downloadModel(_onStatus?: StatusCallback): Promise<void> {}
+
+/** Retry loading the TTS model on the server. */
+export async function downloadModel(onStatus?: StatusCallback): Promise<void> {
+  onStatus?.({ state: "downloading", progress: 0 });
+  try {
+    const origin = resolveServerOrigin();
+    const res = await fetch(`${origin}/api/tts-retry`, { method: "POST" });
+    if (!res.ok) throw new Error("Retry request failed");
+    const status = (await res.json()) as TTSServerStatus;
+    if (status.error) throw new Error(status.error);
+    onStatus?.({ state: "idle" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Download failed";
+    onStatus?.({ state: "error", error: message });
+    throw err;
+  }
+}
+
 export function preloadModelInBackground(): void {}
 
 /**
