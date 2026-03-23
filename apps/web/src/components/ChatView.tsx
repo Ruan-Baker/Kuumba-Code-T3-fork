@@ -1728,30 +1728,34 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const currentProvider = (window as any).__composerState?.provider ?? selectedProvider;
       if (data.reasoningLevel !== undefined || (data as any).fastMode !== undefined) {
         setComposerDraftProvider(threadId, currentProvider as ProviderKind);
+        // Read CURRENT options from the store and merge, so we don't strip existing values
+        const currentOpts =
+          useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions;
         const fm =
           (data as any).fastMode !== undefined
             ? (data as any).fastMode === "true" || (data as any).fastMode === true
-            : undefined;
-        const opts =
-          currentProvider === "codex"
-            ? {
-                codex: {
-                  ...(data.reasoningLevel !== undefined
-                    ? { reasoningEffort: data.reasoningLevel as any }
-                    : {}),
-                  ...(fm !== undefined ? { fastMode: fm } : {}),
-                },
-              }
-            : {
-                claudeAgent: {
-                  ...(data.reasoningLevel !== undefined
-                    ? { effort: data.reasoningLevel as any }
-                    : {}),
-                  ...(fm !== undefined ? { fastMode: fm } : {}),
-                },
-              };
-        console.log("[ChatView] ★ Setting model options:", JSON.stringify(opts));
-        setComposerDraftModelOptions(threadId, opts);
+            : currentProvider === "codex"
+              ? currentOpts?.codex?.fastMode
+              : currentOpts?.claudeAgent?.fastMode;
+        if (currentProvider === "codex") {
+          const currentEffort = currentOpts?.codex?.reasoningEffort;
+          setComposerDraftModelOptions(threadId, {
+            codex: {
+              reasoningEffort:
+                data.reasoningLevel !== undefined ? (data.reasoningLevel as any) : currentEffort,
+              ...(fm ? { fastMode: true } : {}),
+            },
+          });
+        } else {
+          const currentEffort = currentOpts?.claudeAgent?.effort;
+          setComposerDraftModelOptions(threadId, {
+            claudeAgent: {
+              effort:
+                data.reasoningLevel !== undefined ? (data.reasoningLevel as any) : currentEffort,
+              ...(fm ? { fastMode: true } : {}),
+            },
+          });
+        }
       }
     };
     // Register on the bridge AND on window (window survives bridge recreation)
@@ -1839,19 +1843,31 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (!suppressed && (s.reasoningLevel || s.fastMode !== undefined)) {
         const p = selectedProvider;
         setComposerDraftProvider(threadId, p as ProviderKind);
-        const fm = s.fastMode === true || s.fastMode === "true";
+        // Merge with current options to preserve existing values
+        const currentOpts =
+          useComposerDraftStore.getState().draftsByThreadId[threadId]?.modelOptions;
+        const fm =
+          s.fastMode !== undefined
+            ? s.fastMode === true || s.fastMode === "true"
+            : p === "codex"
+              ? currentOpts?.codex?.fastMode
+              : currentOpts?.claudeAgent?.fastMode;
         if (p === "codex") {
           setComposerDraftModelOptions(threadId, {
             codex: {
-              ...(s.reasoningLevel ? { reasoningEffort: s.reasoningLevel as any } : {}),
-              fastMode: fm,
+              reasoningEffort: s.reasoningLevel
+                ? (s.reasoningLevel as any)
+                : currentOpts?.codex?.reasoningEffort,
+              ...(fm ? { fastMode: true } : {}),
             },
           });
         } else {
           setComposerDraftModelOptions(threadId, {
             claudeAgent: {
-              ...(s.reasoningLevel ? { effort: s.reasoningLevel as any } : {}),
-              fastMode: fm,
+              effort: s.reasoningLevel
+                ? (s.reasoningLevel as any)
+                : currentOpts?.claudeAgent?.effort,
+              ...(fm ? { fastMode: true } : {}),
             },
           });
         }
