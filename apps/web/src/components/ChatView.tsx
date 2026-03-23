@@ -1808,36 +1808,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
     // Listen for live composer state pushes from the remote desktop.
     // Only sync interactionMode, runtimeMode, reasoning, fastMode — NOT model/provider.
+    // Only sync interactionMode and runtimeMode from auto-pushes.
+    // Reasoning/fastMode are NOT synced here because the main desktop's
+    // updateComposerState effect auto-pushes its state continuously,
+    // creating a feedback loop that overwrites user changes.
+    // Reasoning/fastMode sync via explicit composer.setState RPC only.
     bridge.onCustomPush = (channel: string, data: unknown) => {
       if (channel !== "composer.state-changed" || !data) return;
       const s = data as Record<string, unknown>;
-      console.log("[ChatView] Remote composer push received:", s);
+      console.log("[ChatView] Remote composer push received (mode only):", s);
       if (s.interactionMode) {
         handleInteractionModeChange(s.interactionMode === "plan" ? "plan" : "default");
       }
       if (s.runtimeMode) {
         void handleRuntimeModeChange(s.runtimeMode as "full-access" | "approval-required");
-      }
-      const p = selectedProvider;
-      if (s.reasoningLevel || s.fastMode !== undefined) {
-        // Set provider first so normalizeProviderModelOptions works correctly
-        setComposerDraftProvider(threadId, p as ProviderKind);
-        const fm = s.fastMode === true || s.fastMode === "true";
-        if (p === "codex") {
-          setComposerDraftModelOptions(threadId, {
-            codex: {
-              ...(s.reasoningLevel ? { reasoningEffort: s.reasoningLevel as any } : {}),
-              fastMode: fm,
-            },
-          });
-        } else {
-          setComposerDraftModelOptions(threadId, {
-            claudeAgent: {
-              ...(s.reasoningLevel ? { effort: s.reasoningLevel as any } : {}),
-              fastMode: fm,
-            },
-          });
-        }
       }
     };
 
