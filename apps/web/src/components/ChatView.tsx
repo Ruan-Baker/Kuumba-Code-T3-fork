@@ -1662,10 +1662,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   ]);
 
   // ── Push composer changes to remote desktop ──────────────────────────
-  // Separate effect that watches ALL composer state values and pushes
-  // to the remote bridge. Uses a skip counter to avoid pushing back
-  // the initial fetch + the first re-render after applying it.
   const remoteSkipCountRef = useRef(0);
+  // Suppress incoming reasoning pushes for 2s after we push to avoid echo
+  const remotePushSuppressUntilRef = useRef(0);
   useEffect(() => {
     const remoteBridge = getActiveRemoteBridge();
     if (!remoteBridge) return;
@@ -1682,6 +1681,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       reasoningLevel: selectedPromptEffortForSync,
       fastMode: currentFastModeForSync,
     });
+
+    // Suppress echo for 2 seconds
+    remotePushSuppressUntilRef.current = Date.now() + 2000;
 
     void remoteBridge
       .request("composer.setState", {
@@ -1807,21 +1809,43 @@ export default function ChatView({ threadId }: ChatViewProps) {
       .catch(() => {});
 
     // Listen for live composer state pushes from the remote desktop.
-    // Only sync interactionMode, runtimeMode, reasoning, fastMode — NOT model/provider.
-    // Only sync interactionMode and runtimeMode from auto-pushes.
-    // Reasoning/fastMode are NOT synced here because the main desktop's
-    // updateComposerState effect auto-pushes its state continuously,
-    // creating a feedback loop that overwrites user changes.
-    // Reasoning/fastMode sync via explicit composer.setState RPC only.
+    // Apply reasoning/fastMode unless we recently pushed our own change
+    // (suppress echo for 2s to prevent feedback loop).
     bridge.onCustomPush = (channel: string, data: unknown) => {
       if (channel !== "composer.state-changed" || !data) return;
       const s = data as Record<string, unknown>;
-      console.log("[ChatView] Remote composer push received (mode only):", s);
+      const suppressed = Date.now() < remotePushSuppressUntilRef.current;
+      console.log(
+        "[ChatView] Remote composer push received:",
+        s,
+        suppressed ? "(reasoning suppressed)" : "",
+      );
       if (s.interactionMode) {
         handleInteractionModeChange(s.interactionMode === "plan" ? "plan" : "default");
       }
       if (s.runtimeMode) {
         void handleRuntimeModeChange(s.runtimeMode as "full-access" | "approval-required");
+      }
+      // Apply reasoning/fastMode unless we just pushed (echo suppression)
+      if (!suppressed && (s.reasoningLevel || s.fastMode !== undefined)) {
+        const p = selectedProvider;
+        setComposerDraftProvider(threadId, p as ProviderKind);
+        const fm = s.fastMode === true || s.fastMode === "true";
+        if (p === "codex") {
+          setComposerDraftModelOptions(threadId, {
+            codex: {
+              ...(s.reasoningLevel ? { reasoningEffort: s.reasoningLevel as any } : {}),
+              fastMode: fm,
+            },
+          });
+        } else {
+          setComposerDraftModelOptions(threadId, {
+            claudeAgent: {
+              ...(s.reasoningLevel ? { effort: s.reasoningLevel as any } : {}),
+              fastMode: fm,
+            },
+          });
+        }
       }
     };
 
