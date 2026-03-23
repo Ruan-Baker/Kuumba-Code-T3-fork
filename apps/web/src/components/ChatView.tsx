@@ -1645,6 +1645,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "codex"
       ? draftModelOptions?.codex?.fastMode === true
       : draftModelOptions?.claudeAgent?.fastMode === true;
+  const remoteSyncInitializedRef = useRef(false);
   useEffect(() => {
     updateComposerState({
       interactionMode,
@@ -1653,17 +1654,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
       reasoningLevel: selectedPromptEffortForSync,
     });
 
-    // Also push to remote desktop if viewing remotely
+    // Push to remote desktop — skip the first render to avoid overwriting
+    // the initial state we just fetched from the remote
     const remoteBridge = getActiveRemoteBridge();
     if (remoteBridge) {
-      void remoteBridge
-        .request("composer.setState", {
-          interactionMode,
-          runtimeMode,
-          reasoningLevel: selectedPromptEffortForSync,
-          fastMode: currentFastModeForSync,
-        })
-        .catch(() => {});
+      if (!remoteSyncInitializedRef.current) {
+        remoteSyncInitializedRef.current = true;
+      } else {
+        void remoteBridge
+          .request("composer.setState", {
+            interactionMode,
+            runtimeMode,
+            reasoningLevel: selectedPromptEffortForSync,
+            fastMode: currentFastModeForSync,
+          })
+          .catch(() => {});
+      }
     }
   }, [
     interactionMode,
