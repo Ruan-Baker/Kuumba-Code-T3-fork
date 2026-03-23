@@ -1,9 +1,17 @@
-import { ChevronRightIcon, MonitorIcon, SettingsIcon, WifiIcon, WifiOffIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  Loader2,
+  MonitorIcon,
+  SettingsIcon,
+  WifiIcon,
+  WifiOffIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { useRelay } from "../lib/useRelayConnection";
 import { useRemoteConnectionStore } from "../remoteConnection";
+import { useStore } from "../store";
 import type { PairedDevice } from "../lib/relay-transport";
 import type { RelayTransport } from "../lib/relay-transport";
 import { createRelayNativeApi } from "../wsNativeApi";
@@ -87,10 +95,15 @@ function RelayDeviceGroup({
   transport: RelayTransport;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [loading, setLoading] = useState(false);
   const { connectViaRelay } = useRemoteConnectionStore();
+  const syncServerReadModel = useStore((s) => s.syncServerReadModel);
   const navigate = useNavigate();
 
   const handleSessionClick = (session: PairedDevice["sessions"][number]) => {
+    if (loading) return;
+    setLoading(true);
+
     const { api, bridge } = createRelayNativeApi(transport, device.deviceId);
 
     transport.registerMessageHandler(device.deviceId, (plaintext) => {
@@ -102,7 +115,19 @@ function RelayDeviceGroup({
     connectViaRelay(transport, device.deviceId, device.deviceName);
     setActiveApi(api);
 
-    void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
+    // Fetch the remote server's snapshot and sync to store BEFORE navigating
+    void api.orchestration
+      .getSnapshot()
+      .then((snapshot) => {
+        syncServerReadModel(snapshot);
+        void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
+      })
+      .catch((err) => {
+        console.error("[Remote] Failed to fetch snapshot:", err);
+        // Navigate anyway — EventRouter will retry
+        void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
+      })
+      .finally(() => setLoading(false));
   };
 
   const sessions = device.sessions;
@@ -121,7 +146,9 @@ function RelayDeviceGroup({
           <span className="flex-1 truncate text-xs font-medium text-foreground/90">
             {device.deviceName}
           </span>
-          {device.online ? (
+          {loading ? (
+            <Loader2 className="size-3 animate-spin text-primary shrink-0" />
+          ) : device.online ? (
             <WifiIcon className="size-3 text-green-500 shrink-0" />
           ) : (
             <WifiOffIcon className="size-3 text-red-400 shrink-0" />
