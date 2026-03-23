@@ -7,6 +7,19 @@
  */
 import { create } from "zustand";
 import type { RelayTransport } from "./lib/relay-transport";
+import type { RelayWsBridge } from "./lib/relay-ws-bridge";
+
+// ── Global bridge reference for remote composer sync ─────────────────
+
+let activeRemoteBridge: RelayWsBridge | null = null;
+
+export function getActiveRemoteBridge(): RelayWsBridge | null {
+  return activeRemoteBridge;
+}
+
+export function setActiveRemoteBridge(bridge: RelayWsBridge | null): void {
+  activeRemoteBridge = bridge;
+}
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -52,6 +65,7 @@ export const useRemoteConnectionStore = create<RemoteConnectionState & RemoteCon
     },
 
     disconnect: () => {
+      activeRemoteBridge = null;
       set({
         isActive: false,
         connectedDeviceName: null,

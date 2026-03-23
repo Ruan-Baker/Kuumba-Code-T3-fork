@@ -8,6 +8,7 @@ import type { PairedDevice } from "../lib/relay-transport";
 import type { RelayTransport } from "../lib/relay-transport";
 import { createRelayNativeApi } from "../wsNativeApi";
 import { setActiveApi } from "../nativeApi";
+import { setActiveRemoteBridge } from "../remoteConnection";
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
@@ -96,6 +97,8 @@ function RelayDeviceGroup({
       bridge.handleRelayMessage(plaintext);
     });
 
+    // Store bridge globally so ChatView can use it for composer state sync
+    setActiveRemoteBridge(bridge);
     connectViaRelay(transport, device.deviceId, device.deviceName);
     setActiveApi(api);
 

@@ -112,6 +112,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { useRelay } from "../lib/useRelayConnection";
+import { getActiveRemoteBridge } from "../remoteConnection";
 import { Separator } from "./ui/separator";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { cn, randomUUID } from "~/lib/utils";
@@ -1639,7 +1640,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     draftModelOptions,
   ]);
 
-  // Push full composer state to mobile when any setting changes
+  // Push full composer state to mobile/remote desktops when any setting changes
   const currentFastModeForSync =
     selectedProvider === "codex"
       ? draftModelOptions?.codex?.fastMode === true
@@ -1651,6 +1652,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
       model: selectedModel,
       reasoningLevel: selectedPromptEffortForSync,
     });
+
+    // Also push to remote desktop if viewing remotely
+    const remoteBridge = getActiveRemoteBridge();
+    if (remoteBridge) {
+      void remoteBridge
+        .request("composer.setState", {
+          interactionMode,
+          runtimeMode,
+          model: selectedModel,
+          reasoningLevel: selectedPromptEffortForSync,
+          fastMode: currentFastModeForSync,
+        })
+        .catch(() => {});
+    }
   }, [
     interactionMode,
     runtimeMode,
@@ -1723,6 +1738,55 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider,
     setComposerDraftModelOptions,
   ]);
+
+  // ── Remote desktop composer sync ────────────────────────────────────
+  // When viewing a remote session, fetch the remote composer state on mount
+  // and push local changes back through the relay bridge.
+  useEffect(() => {
+    const bridge = getActiveRemoteBridge();
+    if (!bridge) return;
+
+    // Fetch initial composer state from remote desktop
+    void bridge
+      .request<Record<string, unknown>>("composer.getState")
+      .then((state) => {
+        if (!state) return;
+        if (typeof state.model === "string") setComposerDraftModel(threadId, state.model);
+        if (state.interactionMode) {
+          handleInteractionModeChange(state.interactionMode === "plan" ? "plan" : "default");
+        }
+        if (state.runtimeMode) {
+          void handleRuntimeModeChange(state.runtimeMode as "full-access" | "approval-required");
+        }
+        if (state.reasoningLevel) {
+          const p = (state.provider as string) ?? selectedProvider;
+          if (p === "codex") {
+            setComposerDraftModelOptions(threadId, {
+              codex: { reasoningEffort: state.reasoningLevel as any },
+            });
+          } else {
+            setComposerDraftModelOptions(threadId, {
+              claudeAgent: { effort: state.reasoningLevel as any },
+            });
+          }
+        }
+        if (state.fastMode !== undefined) {
+          const p = (state.provider as string) ?? selectedProvider;
+          const fm = state.fastMode === true || state.fastMode === "true";
+          if (p === "codex") {
+            setComposerDraftModelOptions(threadId, { codex: { fastMode: fm } });
+          } else {
+            setComposerDraftModelOptions(threadId, { claudeAgent: { fastMode: fm } });
+          }
+        }
+        if (typeof state.provider === "string") {
+          setComposerDraftProvider(threadId, state.provider as ProviderKind);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId]);
+
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
       if (open) {
