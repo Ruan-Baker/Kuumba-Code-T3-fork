@@ -1703,10 +1703,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     void handleRuntimeModeChange(newRuntime);
   }, [handleRuntimeModeChange, runtimeMode]);
 
-  // Listen for composer state changes from mobile
+  // Listen for composer state changes from mobile/remote desktop
   useEffect(() => {
     const handler = (data: Record<string, unknown>) => {
-      console.log("[ChatView] Composer state changed from mobile:", data);
+      console.log("[ChatView] Composer state changed from remote/mobile:", data);
       if (data.interactionMode !== undefined) {
         handleInteractionModeChange(data.interactionMode === "plan" ? "plan" : "default");
       }
@@ -1716,28 +1716,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (data.model !== undefined && typeof data.model === "string") {
         setComposerDraftModel(threadId, data.model);
       }
-      if (data.reasoningLevel !== undefined) {
-        const currentProvider = (window as any).__composerState?.provider ?? selectedProvider;
+      const currentProvider = (window as any).__composerState?.provider ?? selectedProvider;
+      if (data.reasoningLevel !== undefined || (data as any).fastMode !== undefined) {
+        // Set provider first so normalizeProviderModelOptions has the correct provider
+        setComposerDraftProvider(threadId, currentProvider as ProviderKind);
+        const fm =
+          (data as any).fastMode !== undefined
+            ? (data as any).fastMode === "true" || (data as any).fastMode === true
+            : undefined;
         if (currentProvider === "codex") {
           setComposerDraftModelOptions(threadId, {
-            codex: { reasoningEffort: data.reasoningLevel as any },
+            codex: {
+              ...(data.reasoningLevel !== undefined
+                ? { reasoningEffort: data.reasoningLevel as any }
+                : {}),
+              ...(fm !== undefined ? { fastMode: fm } : {}),
+            },
           });
         } else {
           setComposerDraftModelOptions(threadId, {
-            claudeAgent: { effort: data.reasoningLevel as any },
-          });
-        }
-      }
-      if ((data as any).fastMode !== undefined) {
-        const fm = (data as any).fastMode === "true" || (data as any).fastMode === true;
-        const currentProvider = (window as any).__composerState?.provider ?? selectedProvider;
-        if (currentProvider === "codex") {
-          setComposerDraftModelOptions(threadId, {
-            codex: { fastMode: fm },
-          });
-        } else {
-          setComposerDraftModelOptions(threadId, {
-            claudeAgent: { fastMode: fm },
+            claudeAgent: {
+              ...(data.reasoningLevel !== undefined ? { effort: data.reasoningLevel as any } : {}),
+              ...(fm !== undefined ? { fastMode: fm } : {}),
+            },
           });
         }
       }
@@ -1819,6 +1820,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       }
       const p = selectedProvider;
       if (s.reasoningLevel || s.fastMode !== undefined) {
+        // Set provider first so normalizeProviderModelOptions works correctly
+        setComposerDraftProvider(threadId, p as ProviderKind);
         const fm = s.fastMode === true || s.fastMode === "true";
         if (p === "codex") {
           setComposerDraftModelOptions(threadId, {
