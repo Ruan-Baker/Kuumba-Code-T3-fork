@@ -259,9 +259,9 @@ export class RelayInboundBridge {
       return;
     }
 
-    // Handle composer.setState — mobile is changing a setting
+    // Handle composer.setState — remote/mobile is changing a setting
     if (body._tag === "composer.setState") {
-      console.log("[inbound-bridge] composer.setState from mobile:", body);
+      console.log("[inbound-bridge] composer.setState received:", JSON.stringify(body));
       const newState: Record<string, unknown> = {};
       if (typeof body.interactionMode === "string") newState.interactionMode = body.interactionMode;
       if (typeof body.runtimeMode === "string") newState.runtimeMode = body.runtimeMode;
@@ -269,9 +269,19 @@ export class RelayInboundBridge {
       if (typeof body.reasoningLevel === "string") newState.reasoningLevel = body.reasoningLevel;
       if (body.fastMode !== undefined) newState.fastMode = body.fastMode;
       Object.assign(this.composerState, newState);
-      // Try bridge callback first, then fall back to window global
       const handler = this.onComposerStateChanged ?? (window as any).__onComposerStateChanged;
-      handler?.(newState);
+      console.log(
+        "[inbound-bridge] composer.setState newState:",
+        JSON.stringify(newState),
+        "handler exists:",
+        !!handler,
+      );
+      if (handler) {
+        handler(newState);
+        console.log("[inbound-bridge] composer.setState handler called successfully");
+      } else {
+        console.warn("[inbound-bridge] NO handler for composer.setState!");
+      }
       const response = JSON.stringify({ id, result: { ok: true } });
       void this.relay.sendToDevice(fromDeviceId, response).catch(() => {});
       return;
