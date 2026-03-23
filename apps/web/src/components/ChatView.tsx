@@ -1645,7 +1645,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "codex"
       ? draftModelOptions?.codex?.fastMode === true
       : draftModelOptions?.claudeAgent?.fastMode === true;
-  const remoteSyncInitializedRef = useRef(false);
   useEffect(() => {
     updateComposerState({
       interactionMode,
@@ -1653,24 +1652,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       model: selectedModel,
       reasoningLevel: selectedPromptEffortForSync,
     });
-
-    // Push to remote desktop — skip the first render to avoid overwriting
-    // the initial state we just fetched from the remote
-    const remoteBridge = getActiveRemoteBridge();
-    if (remoteBridge) {
-      if (!remoteSyncInitializedRef.current) {
-        remoteSyncInitializedRef.current = true;
-      } else {
-        void remoteBridge
-          .request("composer.setState", {
-            interactionMode,
-            runtimeMode,
-            reasoningLevel: selectedPromptEffortForSync,
-            fastMode: currentFastModeForSync,
-          })
-          .catch(() => {});
-      }
-    }
   }, [
     interactionMode,
     runtimeMode,
@@ -1679,6 +1660,38 @@ export default function ChatView({ threadId }: ChatViewProps) {
     currentFastModeForSync,
     updateComposerState,
   ]);
+
+  // ── Push composer changes to remote desktop ──────────────────────────
+  // Separate effect that watches ALL composer state values and pushes
+  // to the remote bridge. Uses a skip counter to avoid pushing back
+  // the initial fetch + the first re-render after applying it.
+  const remoteSkipCountRef = useRef(0);
+  useEffect(() => {
+    const remoteBridge = getActiveRemoteBridge();
+    if (!remoteBridge) return;
+
+    // Skip the first 2 renders (initial mount + after applying fetched state)
+    if (remoteSkipCountRef.current < 2) {
+      remoteSkipCountRef.current++;
+      return;
+    }
+
+    console.log("[ChatView] Pushing to remote:", {
+      interactionMode,
+      runtimeMode,
+      reasoningLevel: selectedPromptEffortForSync,
+      fastMode: currentFastModeForSync,
+    });
+
+    void remoteBridge
+      .request("composer.setState", {
+        interactionMode,
+        runtimeMode,
+        reasoningLevel: selectedPromptEffortForSync,
+        fastMode: currentFastModeForSync,
+      })
+      .catch((err) => console.warn("[ChatView] composer.setState failed:", err));
+  }, [interactionMode, runtimeMode, selectedPromptEffortForSync, currentFastModeForSync]);
 
   const toggleInteractionMode = useCallback(() => {
     const newInteraction = interactionMode === "plan" ? "default" : "plan";
