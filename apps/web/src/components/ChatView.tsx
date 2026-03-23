@@ -1751,6 +1751,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       .request<Record<string, unknown>>("composer.getState")
       .then((state) => {
         if (!state) return;
+        console.log("[ChatView] Remote composer state received:", state);
+
+        // Set provider first so model options go to the right provider
+        if (typeof state.provider === "string") {
+          setComposerDraftProvider(threadId, state.provider as ProviderKind);
+        }
         if (typeof state.model === "string") setComposerDraftModel(threadId, state.model);
         if (state.interactionMode) {
           handleInteractionModeChange(state.interactionMode === "plan" ? "plan" : "default");
@@ -1758,29 +1764,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
         if (state.runtimeMode) {
           void handleRuntimeModeChange(state.runtimeMode as "full-access" | "approval-required");
         }
-        if (state.reasoningLevel) {
-          const p = (state.provider as string) ?? selectedProvider;
-          if (p === "codex") {
-            setComposerDraftModelOptions(threadId, {
-              codex: { reasoningEffort: state.reasoningLevel as any },
-            });
-          } else {
-            setComposerDraftModelOptions(threadId, {
-              claudeAgent: { effort: state.reasoningLevel as any },
-            });
-          }
-        }
-        if (state.fastMode !== undefined) {
-          const p = (state.provider as string) ?? selectedProvider;
-          const fm = state.fastMode === true || state.fastMode === "true";
-          if (p === "codex") {
-            setComposerDraftModelOptions(threadId, { codex: { fastMode: fm } });
-          } else {
-            setComposerDraftModelOptions(threadId, { claudeAgent: { fastMode: fm } });
-          }
-        }
-        if (typeof state.provider === "string") {
-          setComposerDraftProvider(threadId, state.provider as ProviderKind);
+
+        // Set reasoning + fastMode together in one call to avoid overwrites
+        const p = (state.provider as string) ?? selectedProvider;
+        const fm = state.fastMode === true || state.fastMode === "true";
+        if (p === "codex") {
+          setComposerDraftModelOptions(threadId, {
+            codex: {
+              ...(state.reasoningLevel ? { reasoningEffort: state.reasoningLevel as any } : {}),
+              fastMode: fm,
+            },
+          });
+        } else {
+          setComposerDraftModelOptions(threadId, {
+            claudeAgent: {
+              ...(state.reasoningLevel ? { effort: state.reasoningLevel as any } : {}),
+              fastMode: fm,
+            },
+          });
         }
       })
       .catch(() => {});
