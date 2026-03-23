@@ -45,6 +45,13 @@ export interface RelayConnectionState {
   onNotesSyncReceived: (
     handler: (data: { cwd: string; editorState: string; timestamp: number }) => void,
   ) => void;
+  /** Pair with a remote device via relay */
+  pairRemoteDevice: (
+    deviceId: string,
+    pairingToken: string,
+    publicKey: string,
+    deviceName: string,
+  ) => void;
 }
 
 const DEVICE_ID_KEY = "t3code:device-id";
@@ -301,6 +308,16 @@ export function useRelayConnection(): RelayConnectionState {
     [],
   );
 
+  const pairRemoteDevice = useCallback(
+    (deviceId: string, pairingToken: string, publicKey: string, deviceName: string) => {
+      const transport = getGlobalTransport();
+      if (transport) {
+        void transport.pairWithDevice(deviceId, pairingToken, publicKey, deviceName);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     // Sync the server's stable device ID first, then connect
     void syncServerDeviceId().then(() => {
@@ -370,6 +387,28 @@ export function useRelayConnection(): RelayConnectionState {
             setGlobalBridge(new RelayInboundBridge(transport, localWsUrl));
             console.log("[relay] Inbound bridge started for mobile RPC proxying");
           }
+
+          // Auto-pair configured remote devices
+          try {
+            const raw = localStorage.getItem("t3code:app-settings:v1");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const remoteDevices = parsed.remoteDevices ?? [];
+              for (const rd of remoteDevices) {
+                if (rd.deviceId && rd.pairingToken) {
+                  console.log(`[relay] Auto-pairing remote device: ${rd.name || rd.deviceId}`);
+                  void transport.pairWithDevice(
+                    rd.deviceId,
+                    rd.pairingToken,
+                    rd.publicKey ?? "",
+                    rd.name || rd.deviceId,
+                  );
+                }
+              }
+            }
+          } catch {
+            // Ignore parse errors
+          }
         },
         onDisconnected: () => {
           console.log("[relay] Disconnected from relay server");
@@ -413,6 +452,7 @@ export function useRelayConnection(): RelayConnectionState {
     registerComposerStateGetter,
     pushNotesSync,
     onNotesSyncReceived,
+    pairRemoteDevice,
   };
 }
 
@@ -427,6 +467,7 @@ export const RelayContext = createContext<RelayConnectionState>({
   registerComposerStateGetter: () => {},
   pushNotesSync: () => {},
   onNotesSyncReceived: () => {},
+  pairRemoteDevice: () => {},
 });
 
 export function useRelay(): RelayConnectionState {

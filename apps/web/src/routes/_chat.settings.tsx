@@ -182,7 +182,7 @@ function TextToSpeechSettings() {
 // ── Remote Devices Settings ───────────────────────────────────────────
 
 function createEmptyDevice(): RemoteDeviceConfig {
-  return { name: "", tailscaleHost: "", port: 3773, authToken: "" };
+  return { name: "", deviceId: "", pairingToken: "" };
 }
 
 function RemoteDevicesSettings({
@@ -215,7 +215,7 @@ function RemoteDevicesSettings({
   };
 
   const saveDevice = () => {
-    if (!draft.name.trim() || !draft.tailscaleHost.trim()) return;
+    if (!draft.name.trim() || !draft.deviceId.trim() || !draft.pairingToken.trim()) return;
     const updated = [...devices];
     if (editingIndex !== null) {
       updated[editingIndex] = draft;
@@ -231,15 +231,15 @@ function RemoteDevicesSettings({
   };
 
   const isFormValid =
-    draft.name.trim() !== "" && draft.tailscaleHost.trim() !== "" && draft.port > 0;
+    draft.name.trim() !== "" && draft.deviceId.trim() !== "" && draft.pairingToken.trim() !== "";
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <div className="mb-4">
         <h2 className="text-sm font-medium text-foreground">Remote Devices</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Configure other machines running Kuumba Code. Sessions from these devices appear in the
-          Remote tab of the sidebar.
+          Pair other desktops running Kuumba Code. Copy the Device ID and Pairing Token from the
+          other machine's "This Device" section above.
         </p>
       </div>
 
@@ -249,14 +249,14 @@ function RemoteDevicesSettings({
           <div className="space-y-2">
             {devices.map((device, index) => (
               <div
-                key={`${device.tailscaleHost}:${device.port}`}
+                key={device.deviceId}
                 className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2"
               >
                 <MonitorIcon className="size-4 shrink-0 text-muted-foreground/60" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">{device.name}</p>
                   <p className="text-[11px] text-muted-foreground font-mono truncate">
-                    {device.tailscaleHost}:{device.port}
+                    {device.deviceId.slice(0, 12)}...
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -290,7 +290,7 @@ function RemoteDevicesSettings({
         {isAdding ? (
           <div className="rounded-xl border border-border bg-background/50 p-4 space-y-3">
             <h3 className="text-xs font-medium text-foreground">
-              {editingIndex !== null ? "Edit Device" : "Add Device"}
+              {editingIndex !== null ? "Edit Device" : "Pair Device"}
             </h3>
 
             <label className="block space-y-1">
@@ -298,53 +298,42 @@ function RemoteDevicesSettings({
               <Input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="e.g. Desktop, Work Laptop"
+                placeholder="e.g. Work Laptop, Home Desktop"
                 spellCheck={false}
               />
             </label>
 
             <label className="block space-y-1">
-              <span className="text-xs font-medium text-foreground">Tailscale hostname or IP</span>
+              <span className="text-xs font-medium text-foreground">Device ID</span>
               <Input
-                value={draft.tailscaleHost}
-                onChange={(e) => setDraft({ ...draft, tailscaleHost: e.target.value })}
-                placeholder="e.g. my-desktop.tail12345.ts.net"
+                value={draft.deviceId}
+                onChange={(e) => setDraft({ ...draft, deviceId: e.target.value })}
+                placeholder="Paste the other device's Device ID"
                 spellCheck={false}
+                className="font-mono text-xs"
               />
               <span className="text-[11px] text-muted-foreground">
-                The Tailscale MagicDNS name or IP address of the remote machine.
+                Found in the other device's Settings under "This Device".
               </span>
             </label>
 
-            <div className="flex gap-3">
-              <label className="block flex-1 space-y-1">
-                <span className="text-xs font-medium text-foreground">Port</span>
-                <Input
-                  type="number"
-                  value={draft.port}
-                  onChange={(e) => setDraft({ ...draft, port: Number(e.target.value) || 3773 })}
-                  placeholder="3773"
-                />
-              </label>
-
-              <label className="block flex-[2] space-y-1">
-                <span className="text-xs font-medium text-foreground">Auth token</span>
-                <Input
-                  type="password"
-                  value={draft.authToken}
-                  onChange={(e) => setDraft({ ...draft, authToken: e.target.value })}
-                  placeholder="T3CODE_AUTH_TOKEN value"
-                  spellCheck={false}
-                />
-              </label>
-            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">Pairing Token</span>
+              <Input
+                value={draft.pairingToken}
+                onChange={(e) => setDraft({ ...draft, pairingToken: e.target.value })}
+                placeholder="Paste the other device's Pairing Token"
+                spellCheck={false}
+                className="font-mono text-xs"
+              />
+            </label>
 
             <div className="flex justify-end gap-2 pt-1">
               <Button size="xs" variant="outline" onClick={cancelEdit}>
                 Cancel
               </Button>
               <Button size="xs" onClick={saveDevice} disabled={!isFormValid}>
-                {editingIndex !== null ? "Save Changes" : "Add Device"}
+                {editingIndex !== null ? "Save Changes" : "Pair Device"}
               </Button>
             </div>
           </div>

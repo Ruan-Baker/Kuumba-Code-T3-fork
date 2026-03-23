@@ -34,9 +34,9 @@ const withDefaults =
 
 export const RemoteDeviceConfigSchema = Schema.Struct({
   name: Schema.String,
-  tailscaleHost: Schema.String,
-  port: Schema.Number,
-  authToken: Schema.String,
+  deviceId: Schema.String,
+  pairingToken: Schema.String,
+  publicKey: Schema.optional(Schema.String),
 });
 export type RemoteDeviceConfig = typeof RemoteDeviceConfigSchema.Type;
 
