@@ -69,16 +69,27 @@ export class RelayTransport {
   ): Promise<void> {
     if (!this.keyPair) throw new Error("RelayTransport not connected");
 
-    // Derive shared key immediately so we're ready to decrypt their first message
-    const sharedKey = await deriveSharedKey(this.keyPair.privateKey, targetPublicKey);
-    this.pairedDevices.set(targetDeviceId, {
-      deviceId: targetDeviceId,
-      deviceName: targetDeviceName,
-      online: false,
-      sharedKey,
-      sessions: [],
-    });
-    this._notifyPairedDevicesChanged();
+    // If we already have this device paired, skip
+    if (this.pairedDevices.has(targetDeviceId)) return;
+
+    // Pre-derive shared key if public key is available.
+    // When pairing by Device ID + Token only (no public key), the key
+    // will be derived from the pair-accepted response instead.
+    if (targetPublicKey) {
+      try {
+        const sharedKey = await deriveSharedKey(this.keyPair.privateKey, targetPublicKey);
+        this.pairedDevices.set(targetDeviceId, {
+          deviceId: targetDeviceId,
+          deviceName: targetDeviceName,
+          online: false,
+          sharedKey,
+          sessions: [],
+        });
+        this._notifyPairedDevicesChanged();
+      } catch {
+        // Key derivation failed — will be handled by pair-accepted
+      }
+    }
 
     const msg: ClientToRelayMessage = {
       type: "pair-request",

@@ -188,9 +188,11 @@ function createEmptyDevice(): RemoteDeviceConfig {
 function RemoteDevicesSettings({
   devices,
   onUpdate,
+  onPairDevice,
 }: {
   devices: readonly RemoteDeviceConfig[];
   onUpdate: (devices: RemoteDeviceConfig[]) => void;
+  onPairDevice?: (deviceId: string, pairingToken: string, deviceName: string) => void;
 }) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<RemoteDeviceConfig>(createEmptyDevice);
@@ -223,6 +225,8 @@ function RemoteDevicesSettings({
       updated.push(draft);
     }
     onUpdate(updated);
+    // Trigger pairing immediately via relay
+    onPairDevice?.(draft.deviceId.trim(), draft.pairingToken.trim(), draft.name.trim());
     cancelEdit();
   };
 
@@ -604,6 +608,7 @@ function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const relay = useRelay();
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
@@ -848,6 +853,9 @@ function SettingsRouteView() {
             <RemoteDevicesSettings
               devices={settings.remoteDevices}
               onUpdate={(remoteDevices) => updateSettings({ remoteDevices })}
+              onPairDevice={(deviceId, pairingToken, deviceName) =>
+                relay.pairRemoteDevice(deviceId, pairingToken, "", deviceName)
+              }
             />
 
             <TextToSpeechSettings />
