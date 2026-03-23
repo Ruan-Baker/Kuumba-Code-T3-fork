@@ -1785,6 +1785,43 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
       })
       .catch(() => {});
+
+    // Listen for live composer state pushes from the remote desktop
+    bridge.onCustomPush = (channel: string, data: unknown) => {
+      if (channel !== "composer.state-changed" || !data) return;
+      const s = data as Record<string, unknown>;
+      console.log("[ChatView] Remote composer push received:", s);
+      if (typeof s.model === "string") setComposerDraftModel(threadId, s.model);
+      if (s.interactionMode) {
+        handleInteractionModeChange(s.interactionMode === "plan" ? "plan" : "default");
+      }
+      if (s.runtimeMode) {
+        void handleRuntimeModeChange(s.runtimeMode as "full-access" | "approval-required");
+      }
+      const p = (s.provider as string) ?? selectedProvider;
+      if (s.reasoningLevel || s.fastMode !== undefined) {
+        const fm = s.fastMode === true || s.fastMode === "true";
+        if (p === "codex") {
+          setComposerDraftModelOptions(threadId, {
+            codex: {
+              ...(s.reasoningLevel ? { reasoningEffort: s.reasoningLevel as any } : {}),
+              fastMode: fm,
+            },
+          });
+        } else {
+          setComposerDraftModelOptions(threadId, {
+            claudeAgent: {
+              ...(s.reasoningLevel ? { effort: s.reasoningLevel as any } : {}),
+              fastMode: fm,
+            },
+          });
+        }
+      }
+    };
+
+    return () => {
+      if (bridge.onCustomPush) bridge.onCustomPush = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 

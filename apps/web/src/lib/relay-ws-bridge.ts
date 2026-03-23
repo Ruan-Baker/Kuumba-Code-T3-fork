@@ -64,6 +64,9 @@ export class RelayWsBridge {
   private readonly listeners = new Map<string, Set<(message: WsPush) => void>>();
   private readonly latestPushByChannel = new Map<string, WsPush>();
 
+  /** Optional callback for custom push messages (composer.state-changed, etc.) */
+  onCustomPush: ((channel: string, data: unknown) => void) | null = null;
+
   /**
    * @param relay          The connected RelayTransport instance.
    * @param targetDeviceId The remote device this bridge communicates with.
@@ -176,6 +179,38 @@ export class RelayWsBridge {
   // ----- private helpers ----------------------------------------------------
 
   private _handleMessage(raw: string): void {
+    // Handle custom push messages (composer.state-changed, notes.sync, etc.)
+    // that don't match the strict WsResponse schema.
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (parsed.type === "push" && typeof parsed.channel === "string") {
+        const fakePush = {
+          type: "push" as const,
+          channel: parsed.channel,
+          data: parsed.data,
+          sequence: 0,
+        };
+        this.latestPushByChannel.set(parsed.channel, fakePush as any);
+        const channelListeners = this.listeners.get(parsed.channel);
+        if (channelListeners) {
+          for (const listener of channelListeners) {
+            try {
+              listener(fakePush as any);
+            } catch {
+              // Swallow listener errors
+            }
+          }
+        }
+        // Also dispatch to a generic handler if registered
+        if (this.onCustomPush) {
+          this.onCustomPush(parsed.channel, parsed.data);
+        }
+        return;
+      }
+    } catch {
+      // Not valid JSON or not a push — fall through to schema decoding
+    }
+
     const result = decodeWsResponse(raw);
     if (Result.isFailure(result)) {
       console.warn("[RelayWsBridge] Dropped inbound envelope", formatSchemaError(result.failure));
