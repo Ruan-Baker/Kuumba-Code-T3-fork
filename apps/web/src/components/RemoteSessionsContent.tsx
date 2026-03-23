@@ -2,7 +2,7 @@ import { ChevronRightIcon, MonitorIcon, SettingsIcon, WifiIcon, WifiOffIcon } fr
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
-import { useRelayDevices } from "../remoteDevices";
+import { useRelay } from "../lib/useRelayConnection";
 import { useRemoteConnectionStore } from "../remoteConnection";
 import type { PairedDevice } from "../lib/relay-transport";
 import type { RelayTransport } from "../lib/relay-transport";
@@ -181,16 +181,8 @@ export function RemoteSessionsContent() {
   const { settings } = useAppSettings();
   const navigate = useNavigate();
 
-  // Relay-based presence — only active when a relayUrl is configured.
-  const relayConfig = settings.relayUrl
-    ? {
-        relayUrl: settings.relayUrl,
-        deviceId: settings.devicePairingToken,
-        deviceName: settings.tailscaleHostname || "This device",
-        pairingToken: settings.devicePairingToken,
-      }
-    : null;
-  const { transport, pairedDevices, relayConnected } = useRelayDevices(relayConfig);
+  // Use the global relay transport (managed by useRelayConnection at app root)
+  const { transport, connected: relayConnected, pairedDevices } = useRelay();
 
   const hasRelayUrl = !!settings.relayUrl;
 
