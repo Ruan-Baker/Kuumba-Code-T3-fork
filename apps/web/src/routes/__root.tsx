@@ -6,7 +6,7 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Throttler } from "@tanstack/react-pacer";
 
@@ -15,7 +15,7 @@ import { Button } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
-import { readNativeApi } from "../nativeApi";
+import { readNativeApi, onApiChange } from "../nativeApi";
 import { clearPromotedDraftThreads, useComposerDraftStore } from "../composerDraftStore";
 import { useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
@@ -155,6 +155,10 @@ function EventRouter() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const pathnameRef = useRef(pathname);
   const handledBootstrapThreadIdRef = useRef<string | null>(null);
+
+  // Track API changes (e.g. swap to remote or back to local) to re-run the effect
+  const [apiVersion, setApiVersion] = useState(0);
+  useEffect(() => onApiChange(() => setApiVersion((v) => v + 1)), []);
 
   pathnameRef.current = pathname;
 
@@ -324,7 +328,9 @@ function EventRouter() {
       unsubWelcome();
       unsubServerConfigUpdated();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    apiVersion,
     navigate,
     queryClient,
     removeOrphanedTerminalStates,
