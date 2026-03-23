@@ -1660,7 +1660,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
         .request("composer.setState", {
           interactionMode,
           runtimeMode,
-          model: selectedModel,
           reasoningLevel: selectedPromptEffortForSync,
           fastMode: currentFastModeForSync,
         })
@@ -1746,18 +1745,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
     const bridge = getActiveRemoteBridge();
     if (!bridge) return;
 
-    // Fetch initial composer state from remote desktop
+    // Fetch initial composer state from remote desktop.
+    // NOTE: Do NOT set model/provider from this — the thread's own model/provider
+    // from the orchestration snapshot is correct. composer.getState returns the
+    // main desktop's CURRENTLY VIEWED thread state which may be a different thread.
+    // Only sync transient settings: reasoning, fastMode, interactionMode, runtimeMode.
     void bridge
       .request<Record<string, unknown>>("composer.getState")
       .then((state) => {
-        if (!state) return;
+        if (!state || typeof state.interactionMode !== "string") return;
         console.log("[ChatView] Remote composer state received:", state);
 
-        // Set provider first so model options go to the right provider
-        if (typeof state.provider === "string") {
-          setComposerDraftProvider(threadId, state.provider as ProviderKind);
-        }
-        if (typeof state.model === "string") setComposerDraftModel(threadId, state.model);
         if (state.interactionMode) {
           handleInteractionModeChange(state.interactionMode === "plan" ? "plan" : "default");
         }
@@ -1765,40 +1763,42 @@ export default function ChatView({ threadId }: ChatViewProps) {
           void handleRuntimeModeChange(state.runtimeMode as "full-access" | "approval-required");
         }
 
-        // Set reasoning + fastMode together in one call to avoid overwrites
-        const p = (state.provider as string) ?? selectedProvider;
+        // Use the thread's own provider (from snapshot), not the remote's current view
+        const p = selectedProvider;
         const fm = state.fastMode === true || state.fastMode === "true";
-        if (p === "codex") {
-          setComposerDraftModelOptions(threadId, {
-            codex: {
-              ...(state.reasoningLevel ? { reasoningEffort: state.reasoningLevel as any } : {}),
-              fastMode: fm,
-            },
-          });
-        } else {
-          setComposerDraftModelOptions(threadId, {
-            claudeAgent: {
-              ...(state.reasoningLevel ? { effort: state.reasoningLevel as any } : {}),
-              fastMode: fm,
-            },
-          });
+        if (state.reasoningLevel || state.fastMode !== undefined) {
+          if (p === "codex") {
+            setComposerDraftModelOptions(threadId, {
+              codex: {
+                ...(state.reasoningLevel ? { reasoningEffort: state.reasoningLevel as any } : {}),
+                fastMode: fm,
+              },
+            });
+          } else {
+            setComposerDraftModelOptions(threadId, {
+              claudeAgent: {
+                ...(state.reasoningLevel ? { effort: state.reasoningLevel as any } : {}),
+                fastMode: fm,
+              },
+            });
+          }
         }
       })
       .catch(() => {});
 
-    // Listen for live composer state pushes from the remote desktop
+    // Listen for live composer state pushes from the remote desktop.
+    // Only sync interactionMode, runtimeMode, reasoning, fastMode — NOT model/provider.
     bridge.onCustomPush = (channel: string, data: unknown) => {
       if (channel !== "composer.state-changed" || !data) return;
       const s = data as Record<string, unknown>;
       console.log("[ChatView] Remote composer push received:", s);
-      if (typeof s.model === "string") setComposerDraftModel(threadId, s.model);
       if (s.interactionMode) {
         handleInteractionModeChange(s.interactionMode === "plan" ? "plan" : "default");
       }
       if (s.runtimeMode) {
         void handleRuntimeModeChange(s.runtimeMode as "full-access" | "approval-required");
       }
-      const p = (s.provider as string) ?? selectedProvider;
+      const p = selectedProvider;
       if (s.reasoningLevel || s.fastMode !== undefined) {
         const fm = s.fastMode === true || s.fastMode === "true";
         if (p === "codex") {
