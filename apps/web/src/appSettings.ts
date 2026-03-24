@@ -58,7 +58,6 @@ export const AppSettingsSchema = Schema.Struct({
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
-  tailscaleHostname: Schema.String.check(Schema.isMaxLength(512)).pipe(withDefaults(() => "")),
   remoteDevices: Schema.Array(RemoteDeviceConfigSchema).pipe(withDefaults(() => [])),
   relayUrl: Schema.String.pipe(
     withDefaults(() => "wss://kuumba-relay-server-production.up.railway.app"),
