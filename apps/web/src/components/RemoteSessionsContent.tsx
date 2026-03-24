@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useAppSettings, type RemoteDeviceConfig } from "../appSettings";
+import { useAppSettings } from "../appSettings";
 import {
   useRemoteDevices,
   type RemoteDeviceStatus,
@@ -64,11 +64,6 @@ function statusLabel(status: string): string {
   }
 }
 
-function buildRemoteWsUrl(device: RemoteDeviceConfig): string {
-  const tokenParam = device.authToken ? `?token=${encodeURIComponent(device.authToken)}` : "";
-  return `ws://${device.tailscaleHost}:${device.port}${tokenParam}`;
-}
-
 /** Group sessions by projectId so we can show notes per project */
 function groupSessionsByProject(sessions: RemoteSessionInfo[]) {
   const groups = new Map<
@@ -108,11 +103,10 @@ function RemoteDeviceGroup({
     if (loading) return;
     setLoading(true);
     try {
-      const wsUrl = buildRemoteWsUrl(deviceStatus.config);
-      const transport = new WsTransport(wsUrl);
-      const remoteApi = createRemoteNativeApi(wsUrl);
+      // For relay devices, connection is handled through the relay transport.
+      // We create a placeholder transport — the actual relay bridge handles RPC proxying.
       const deviceName = deviceStatus.info?.deviceName ?? deviceStatus.config.name;
-      setRemote(remoteApi, transport, deviceStatus.config, deviceName);
+      setRemote(null as any, null as any, deviceStatus.config, deviceName);
       setStatus("connected");
       void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
     } catch (err) {
@@ -250,7 +244,7 @@ export function RemoteSessionsContent() {
           <SidebarMenu>
             {deviceStatusList.map((deviceStatus) => (
               <RemoteDeviceGroup
-                key={`${deviceStatus.config.tailscaleHost}:${deviceStatus.config.port}`}
+                key={deviceStatus.config.deviceId}
                 deviceStatus={deviceStatus}
               />
             ))}
