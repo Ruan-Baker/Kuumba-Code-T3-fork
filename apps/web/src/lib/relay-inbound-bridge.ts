@@ -6,8 +6,12 @@
  * Uses the browser's fetch API for RPC (POST to local server) instead
  * of a separate WebSocket, avoiding connection management issues.
  * Push events are forwarded from the existing WsTransport subscription.
+ *
+ * Also syncs thread state to Convex so mobile devices have a reliable
+ * fallback when relay messages are missed.
  */
 import type { RelayTransport } from "./relay-transport";
+import { syncThreadState, type ThreadStateSnapshot } from "./convex-sync";
 
 export class RelayInboundBridge {
   private relay: RelayTransport;
@@ -61,6 +65,23 @@ export class RelayInboundBridge {
   private localWsUrl: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingRequests = new Map<string, string>(); // requestId → mobileDeviceId
+
+  /**
+   * In-memory thread state tracker for Convex sync.
+   * Builds up a snapshot from push events and periodically syncs to Convex.
+   */
+  private threadStates = new Map<string, {
+    sessionStatus: string;
+    title: string;
+    projectName: string;
+    projectCwd: string;
+    model: string;
+    messages: Array<{ id: string; role: string; text: string; streaming: boolean; createdAt: string }>;
+    activities: Array<{ id: string; tone: string; kind: string; summary: string; createdAt: string }>;
+    proposedPlans: Array<{ id: string; planMarkdown: string; implementedAt: string | null; createdAt: string }>;
+    pendingApprovals: Array<{ requestId: string; type: string; detail: string }>;
+    isStreaming: boolean;
+  }>();
 
   constructor(relay: RelayTransport, localServerWsUrl: string) {
     this.relay = relay;
@@ -380,6 +401,148 @@ export class RelayInboundBridge {
   private forwardPushToMobiles(raw: string): void {
     for (const deviceId of this.activeMobileDevices) {
       void this.relay.sendToDevice(deviceId, raw).catch(() => {});
+    }
+
+    // Also sync state to Convex for mobile fallback
+    this.syncPushToConvex(raw);
+  }
+
+  /**
+   * Parse push events and update Convex thread state.
+   * This ensures mobile always has current state even if relay messages are missed.
+   */
+  private syncPushToConvex(raw: string): void {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.type !== "push") return;
+
+      const channel = parsed.channel as string;
+      const data = parsed.data as Record<string, unknown>;
+      if (!data) return;
+
+      // Only sync orchestration domain events
+      if (channel !== "orchestration.domainEvent") return;
+
+      const event = data as { type: string; aggregateId?: string; payload: Record<string, unknown> };
+      const threadId = (event.payload?.threadId as string) ?? event.aggregateId;
+      if (!threadId) return;
+
+      // Get or create thread state tracker
+      let tracker = this.threadStates.get(threadId);
+      if (!tracker) {
+        tracker = {
+          sessionStatus: "idle",
+          title: "",
+          projectName: "",
+          projectCwd: "",
+          model: "",
+          messages: [],
+          activities: [],
+          proposedPlans: [],
+          pendingApprovals: [],
+          isStreaming: false,
+        };
+        this.threadStates.set(threadId, tracker);
+      }
+
+      let shouldSync = false;
+
+      switch (event.type) {
+        case "thread.message-sent": {
+          const p = event.payload;
+          const messageId = (p.messageId ?? p.id) as string;
+          const role = (p.role ?? "assistant") as string;
+          const text = (p.text ?? "") as string;
+          const streaming = (p.streaming ?? false) as boolean;
+          const createdAt = (p.createdAt ?? new Date().toISOString()) as string;
+
+          const idx = tracker.messages.findIndex((m) => m.id === messageId);
+          if (idx >= 0) {
+            if (streaming) {
+              tracker.messages[idx] = { ...tracker.messages[idx]!, text: tracker.messages[idx]!.text + text, streaming: true, createdAt };
+            } else {
+              tracker.messages[idx] = { ...tracker.messages[idx]!, streaming: false };
+              shouldSync = true; // Message finished — sync immediately
+            }
+          } else {
+            tracker.messages.push({ id: messageId, role, text, streaming, createdAt });
+            if (role === "user") shouldSync = true; // New user message — sync immediately
+          }
+          tracker.isStreaming = streaming;
+          break;
+        }
+
+        case "thread.activity-appended": {
+          const p = event.payload as Record<string, unknown>;
+          tracker.activities.push({
+            id: p.id as string,
+            tone: p.tone as string,
+            kind: p.kind as string,
+            summary: p.summary as string,
+            createdAt: p.createdAt as string,
+          });
+          if ((p.tone as string) === "approval") {
+            tracker.pendingApprovals.push({
+              requestId: p.id as string,
+              type: p.kind as string,
+              detail: p.summary as string,
+            });
+            shouldSync = true; // Approval needs immediate sync
+          }
+          break;
+        }
+
+        case "thread.session-set": {
+          const status = event.payload.status as string;
+          if (status) {
+            tracker.sessionStatus = status;
+            tracker.isStreaming = status === "running" || status === "starting";
+            shouldSync = true; // Session status change — sync immediately
+          }
+          break;
+        }
+
+        case "thread.meta-updated": {
+          if (event.payload.title) {
+            tracker.title = event.payload.title as string;
+            shouldSync = true;
+          }
+          break;
+        }
+
+        case "thread.proposed-plan-upserted": {
+          const p = event.payload as { proposedPlan?: { id: string; planMarkdown: string; implementedAt: string | null; createdAt: string } };
+          if (p.proposedPlan) {
+            const idx = tracker.proposedPlans.findIndex((pl) => pl.id === p.proposedPlan!.id);
+            if (idx >= 0) {
+              tracker.proposedPlans[idx] = p.proposedPlan;
+            } else {
+              tracker.proposedPlans.push(p.proposedPlan);
+            }
+            shouldSync = true;
+          }
+          break;
+        }
+      }
+
+      // Sync to Convex (syncThreadState handles debouncing)
+      if (shouldSync || !tracker.isStreaming) {
+        syncThreadState({
+          threadId,
+          sessionStatus: tracker.sessionStatus,
+          title: tracker.title,
+          projectName: tracker.projectName,
+          projectCwd: tracker.projectCwd,
+          model: tracker.model,
+          messages: tracker.messages,
+          activities: tracker.activities,
+          proposedPlans: tracker.proposedPlans,
+          pendingApprovals: tracker.pendingApprovals,
+          isStreaming: tracker.isStreaming,
+        });
+      }
+    } catch {
+      // Don't let Convex sync errors break push forwarding
     }
   }
 }

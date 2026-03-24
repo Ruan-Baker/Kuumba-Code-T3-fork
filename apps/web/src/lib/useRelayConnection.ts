@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import { RelayTransport, type PairedDevice } from "./relay-transport";
 import { RelayInboundBridge } from "./relay-inbound-bridge";
+import { initConvexSync, disposeConvexSync } from "./convex-sync";
 
 export interface RelayConnectionState {
   transport: RelayTransport | null;
@@ -119,6 +120,19 @@ async function syncServerDeviceId(): Promise<string | null> {
   }
   console.warn("[relay] Could not sync server device ID after 10 attempts");
   return null;
+}
+
+/** Read the Convex deployment URL from settings or env */
+function readConvexUrl(): string {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.convexUrl) return parsed.convexUrl;
+    }
+  } catch { /* ignore */ }
+  // Fallback to env var (for dev)
+  return (import.meta as any).env?.VITE_CONVEX_URL ?? "";
 }
 
 /** Read relay settings directly from localStorage to avoid hook dependencies */
@@ -386,6 +400,12 @@ export function useRelayConnection(): RelayConnectionState {
           if (localWsUrl && !getGlobalBridge()) {
             setGlobalBridge(new RelayInboundBridge(transport, localWsUrl));
             console.log("[relay] Inbound bridge started for mobile RPC proxying");
+          }
+
+          // Initialize Convex sync for thread state persistence
+          const convexUrl = readConvexUrl();
+          if (convexUrl) {
+            void initConvexSync(convexUrl, deviceId);
           }
 
           // Auto-pair configured remote devices

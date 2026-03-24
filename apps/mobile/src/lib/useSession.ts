@@ -1,11 +1,16 @@
 /**
  * Hook to manage a remote session — loads snapshot, subscribes to domain events,
  * provides messages, activities, pending approvals, and dispatch actions.
+ *
+ * When Convex is configured, also polls Convex for the latest thread state as a
+ * fallback. If the relay misses a state change (e.g. session status going from
+ * "running" to "idle"), Convex catches it and the UI updates.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ORCHESTRATION_WS_METHODS, ORCHESTRATION_WS_CHANNELS } from "@t3tools/contracts";
 import type { ChatMessage } from "~/components/MessagesList";
 import type { WsPushChannel, WsPushMessage } from "@t3tools/contracts";
+import { useConvexThreadState, type ConvexThreadState } from "./convexClient";
 
 /** Minimal transport interface — both WsTransport and RelayTransport satisfy this. */
 interface Transport {
@@ -81,6 +86,79 @@ export function useSession(transport: Transport | null, threadId: string | null)
   });
 
   const unsubRef = useRef<(() => void) | null>(null);
+
+  // ── Convex fallback: poll for thread state as backup ────────────
+  const convexState = useConvexThreadState(threadId);
+  const lastConvexUpdate = useRef<number>(0);
+
+  // Reconcile Convex state with relay state:
+  // If Convex has a newer session status (e.g. "idle" when we're stuck on "running"),
+  // update the local state. This prevents the "stuck on working" bug.
+  useEffect(() => {
+    if (!convexState || !state.thread) return;
+    if (convexState.updatedAt <= lastConvexUpdate.current) return;
+    lastConvexUpdate.current = convexState.updatedAt;
+
+    // Session status reconciliation: if Convex says we're not streaming
+    // but local state still thinks we are, trust Convex
+    const localStatus = state.thread.sessionStatus;
+    const convexStatus = convexState.sessionStatus;
+    const stuckOnWorking =
+      (localStatus === "running" || localStatus === "starting") &&
+      (convexStatus === "idle" || convexStatus === "ready" || convexStatus === "error");
+
+    if (stuckOnWorking) {
+      console.log(
+        `[useSession] Convex reconciliation: status ${localStatus} → ${convexStatus}`,
+      );
+      setState((s) => {
+        if (!s.thread) return s;
+        return { ...s, thread: { ...s.thread, sessionStatus: convexStatus } };
+      });
+    }
+
+    // Message reconciliation: if Convex has more messages than we do,
+    // adopt the Convex messages (we missed relay events)
+    if (convexState.messages.length > state.messages.length + 1) {
+      console.log(
+        `[useSession] Convex reconciliation: ${state.messages.length} messages → ${convexState.messages.length}`,
+      );
+      setState((s) => ({
+        ...s,
+        messages: convexState.messages.map((m) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant" | "system",
+          text: m.text,
+          streaming: m.streaming,
+          createdAt: m.createdAt,
+          updatedAt: m.createdAt,
+        })),
+        activities: convexState.activities.map((a) => ({
+          id: a.id,
+          tone: a.tone as "info" | "tool" | "approval" | "error",
+          kind: a.kind,
+          summary: a.summary,
+          payload: {},
+          createdAt: a.createdAt,
+        })),
+        proposedPlans: convexState.proposedPlans,
+        thread: s.thread
+          ? {
+              ...s.thread,
+              sessionStatus: convexState.sessionStatus,
+              title: convexState.title,
+            }
+          : s.thread,
+      }));
+    }
+
+    // Title reconciliation
+    if (convexState.title && state.thread.title !== convexState.title) {
+      setState((s) =>
+        s.thread ? { ...s, thread: { ...s.thread, title: convexState.title } } : s,
+      );
+    }
+  }, [convexState, state.thread?.sessionStatus, state.messages.length]);
 
   // Load snapshot — instant from cache, then refresh in background
   useEffect(() => {

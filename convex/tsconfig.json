@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "strict": true,
+    "target": "ESNext",
+    "lib": ["ES2021", "DOM"],
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "paths": {
+      "convex/_generated/*": ["./_generated/*"]
+    },
+    "moduleResolution": "Bundler",
+    "module": "ESNext"
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["./_generated"]
+}
