@@ -11,7 +11,7 @@
  * fallback when relay messages are missed.
  */
 import type { RelayTransport } from "./relay-transport";
-import { syncThreadState, type ThreadStateSnapshot } from "./convex-sync";
+import { syncThreadState } from "./convex-sync";
 
 export class RelayInboundBridge {
   private relay: RelayTransport;

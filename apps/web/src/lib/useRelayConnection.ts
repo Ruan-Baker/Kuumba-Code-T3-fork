@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import { RelayTransport, type PairedDevice } from "./relay-transport";
 import { RelayInboundBridge } from "./relay-inbound-bridge";
-import { initConvexSync, disposeConvexSync } from "./convex-sync";
+import { initConvexSync } from "./convex-sync";
 
 export interface RelayConnectionState {
   transport: RelayTransport | null;

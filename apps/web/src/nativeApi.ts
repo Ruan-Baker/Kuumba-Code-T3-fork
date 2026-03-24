@@ -13,12 +13,6 @@ import { createWsNativeApi } from "./wsNativeApi";
 import { useConnectionContext } from "./connectionContext";
 
 let cachedApi: NativeApi | undefined;
-<<<<<<< Updated upstream
-let remoteApi: NativeApi | undefined;
-let apiVersion = 0;
-const apiChangeListeners = new Set<() => void>();
-=======
->>>>>>> Stashed changes
 
 /**
  * Read the currently active NativeApi.
@@ -62,11 +56,6 @@ export function ensureNativeApi(): NativeApi {
  * This function is kept for backward compatibility during migration.
  */
 export function setActiveApi(api: NativeApi): void {
-<<<<<<< Updated upstream
-  remoteApi = api;
-  apiVersion++;
-  for (const listener of apiChangeListeners) listener();
-=======
   // Legacy callers still expect this to work, so we update the context store too.
   // However, without a transport reference this is a partial update.
   // Prefer setRemote() on the ConnectionContext directly.
@@ -75,7 +64,6 @@ export function setActiveApi(api: NativeApi): void {
     // This is a compatibility shim — new code should not reach here
     cachedApi = api;
   }
->>>>>>> Stashed changes
 }
 
 /**
@@ -84,13 +72,7 @@ export function setActiveApi(api: NativeApi): void {
  * @deprecated Use useConnectionContext().resetToLocal() instead for new code.
  */
 export function resetToLocalApi(): void {
-<<<<<<< Updated upstream
-  remoteApi = undefined;
-  apiVersion++;
-  for (const listener of apiChangeListeners) listener();
-=======
   useConnectionContext.getState().resetToLocal();
->>>>>>> Stashed changes
 }
 
 /**
@@ -102,16 +84,25 @@ export function isRemoteApiActive(): boolean {
 
 /**
  * Get the current API version (incremented on every swap).
+ *
+ * @deprecated With ConnectionContext the version is tracked reactively.
  */
 export function getApiVersion(): number {
-  return apiVersion;
+  return useConnectionContext.getState().mode === "remote" ? 1 : 0;
 }
 
 /**
  * Subscribe to API changes (swap to remote or back to local).
  * Returns an unsubscribe function.
+ *
+ * @deprecated Use useConnectionContext.subscribe() instead.
  */
 export function onApiChange(listener: () => void): () => void {
-  apiChangeListeners.add(listener);
-  return () => apiChangeListeners.delete(listener);
+  let prevMode = useConnectionContext.getState().mode;
+  return useConnectionContext.subscribe((state) => {
+    if (state.mode !== prevMode) {
+      prevMode = state.mode;
+      listener();
+    }
+  });
 }

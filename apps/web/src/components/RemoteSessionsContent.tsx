@@ -8,17 +8,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-<<<<<<< Updated upstream
-import { useAppSettings } from "../appSettings";
-import { useRelay } from "../lib/useRelayConnection";
-import { useRemoteConnectionStore } from "../remoteConnection";
-import { useStore } from "../store";
-import type { PairedDevice } from "../lib/relay-transport";
-import type { RelayTransport } from "../lib/relay-transport";
-import { createRelayNativeApi } from "../wsNativeApi";
-import { setActiveApi } from "../nativeApi";
-import { setActiveRemoteBridge } from "../remoteConnection";
-=======
 import { useAppSettings, type RemoteDeviceConfig } from "../appSettings";
 import {
   useRemoteDevices,
@@ -28,10 +17,7 @@ import {
 import { useRemoteConnectionStore } from "../remoteConnection";
 import { createRemoteNativeApi } from "../wsNativeApi";
 import { useConnectionContext } from "../connectionContext";
-import { buildRemoteWsUrl } from "../remoteConnection";
 import { WsTransport } from "../wsTransport";
-import { setNotesApiOverride, clearNotesApiOverride } from "../projectNotesStore";
->>>>>>> Stashed changes
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
@@ -78,11 +64,16 @@ function statusLabel(status: string): string {
   }
 }
 
+function buildRemoteWsUrl(device: RemoteDeviceConfig): string {
+  const tokenParam = device.authToken ? `?token=${encodeURIComponent(device.authToken)}` : "";
+  return `ws://${device.tailscaleHost}:${device.port}${tokenParam}`;
+}
+
 /** Group sessions by projectId so we can show notes per project */
-function groupSessionsByProject(sessions: PairedDevice["sessions"]) {
+function groupSessionsByProject(sessions: RemoteSessionInfo[]) {
   const groups = new Map<
     string,
-    { projectName: string; projectCwd: string; sessions: PairedDevice["sessions"] }
+    { projectName: string; projectCwd: string; sessions: RemoteSessionInfo[] }
   >();
   for (const session of sessions) {
     const key = session.projectId;
@@ -100,56 +91,23 @@ function groupSessionsByProject(sessions: PairedDevice["sessions"]) {
   return Array.from(groups.values());
 }
 
-// ── Relay device group ────────────────────────────────────────────────
+// ── Remote device group ────────────────────────────────────────────────
 
-function RelayDeviceGroup({
-  device,
-  transport,
+function RemoteDeviceGroup({
+  deviceStatus,
 }: {
-  device: PairedDevice;
-  transport: RelayTransport;
+  deviceStatus: RemoteDeviceStatus;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { connectViaRelay } = useRemoteConnectionStore();
-  const syncServerReadModel = useStore((s) => s.syncServerReadModel);
+  const { setStatus } = useRemoteConnectionStore();
+  const { setRemote } = useConnectionContext();
   const navigate = useNavigate();
 
-  const handleSessionClick = (session: PairedDevice["sessions"][number]) => {
+  const handleSessionClick = async (session: RemoteSessionInfo) => {
     if (loading) return;
     setLoading(true);
-
-    const { api, bridge } = createRelayNativeApi(transport, device.deviceId);
-
-    transport.registerMessageHandler(device.deviceId, (plaintext) => {
-      bridge.handleRelayMessage(plaintext);
-    });
-
-<<<<<<< Updated upstream
-    // Store bridge globally so ChatView can use it for composer state sync
-    setActiveRemoteBridge(bridge);
-    connectViaRelay(transport, device.deviceId, device.deviceName);
-    setActiveApi(api);
-
-    // Fetch the remote server's snapshot and sync to store BEFORE navigating
-    void api.orchestration
-      .getSnapshot()
-      .then((snapshot) => {
-        syncServerReadModel(snapshot);
-        void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
-      })
-      .catch((err) => {
-        console.error("[Remote] Failed to fetch snapshot:", err);
-        // Navigate anyway — EventRouter will retry
-        void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
-      })
-      .finally(() => setLoading(false));
-=======
-  const { setRemote } = useConnectionContext();
-
-  const handleSessionClick = async (session: RemoteSessionInfo) => {
     try {
-      connect(deviceStatus.config, deviceStatus.info?.deviceName ?? deviceStatus.config.name);
       const wsUrl = buildRemoteWsUrl(deviceStatus.config);
       const transport = new WsTransport(wsUrl);
       const remoteApi = createRemoteNativeApi(wsUrl);
@@ -159,12 +117,14 @@ function RelayDeviceGroup({
       void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
     } catch (err) {
       setStatus("error", err instanceof Error ? err.message : "Connection failed");
+    } finally {
+      setLoading(false);
     }
->>>>>>> Stashed changes
   };
 
-  const sessions = device.sessions;
+  const sessions = deviceStatus.info?.sessions ?? [];
   const projectGroups = groupSessionsByProject(sessions);
+  const deviceName = deviceStatus.info?.deviceName ?? deviceStatus.config.name;
 
   return (
     <SidebarMenuItem>
@@ -177,11 +137,11 @@ function RelayDeviceGroup({
           />
           <MonitorIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
           <span className="flex-1 truncate text-xs font-medium text-foreground/90">
-            {device.deviceName}
+            {deviceName}
           </span>
           {loading ? (
             <Loader2 className="size-3 animate-spin text-primary shrink-0" />
-          ) : device.online ? (
+          ) : deviceStatus.online ? (
             <WifiIcon className="size-3 text-green-500 shrink-0" />
           ) : (
             <WifiOffIcon className="size-3 text-red-400 shrink-0" />
@@ -190,7 +150,7 @@ function RelayDeviceGroup({
 
         <CollapsibleContent>
           <SidebarMenuSub className="mx-1 my-0 w-full translate-x-0 gap-0.5 px-1.5 py-0">
-            {!device.online ? (
+            {!deviceStatus.online ? (
               <div className="px-2 py-1.5 text-xs text-muted-foreground/60 italic">
                 Device offline
               </div>
@@ -216,7 +176,7 @@ function RelayDeviceGroup({
                     <SidebarMenuSubItem key={session.threadId}>
                       <SidebarMenuSubButton
                         className="flex items-center gap-1.5 py-1"
-                        onClick={() => handleSessionClick(session)}
+                        onClick={() => void handleSessionClick(session)}
                       >
                         <span
                           className={`size-1.5 shrink-0 rounded-full ${statusColor(session.status)}`}
@@ -244,13 +204,13 @@ export function RemoteSessionsContent() {
   const { settings } = useAppSettings();
   const navigate = useNavigate();
 
-  // Use the global relay transport (managed by useRelayConnection at app root)
-  const { transport, connected: relayConnected, pairedDevices } = useRelay();
+  const remoteDevices = settings.remoteDevices ?? [];
+  const { statuses } = useRemoteDevices(remoteDevices);
 
-  const hasRelayUrl = !!settings.relayUrl;
+  const hasDevices = remoteDevices.length > 0;
 
-  // Show empty state when relay is not configured
-  if (!hasRelayUrl) {
+  // Show empty state when no remote devices are configured
+  if (!hasDevices) {
     return (
       <SidebarContent>
         <SidebarGroup>
@@ -277,19 +237,22 @@ export function RemoteSessionsContent() {
     );
   }
 
+  const deviceStatusList = Array.from(statuses.values());
+
   return (
     <SidebarContent>
       <SidebarGroup>
-        {pairedDevices.length === 0 ? (
+        {deviceStatusList.length === 0 ? (
           <div className="px-3 py-2 text-[11px] text-muted-foreground/50 italic">
-            {relayConnected
-              ? "No paired devices. Add a device in Settings."
-              : "Connecting to relay…"}
+            Connecting to remote devices...
           </div>
         ) : (
           <SidebarMenu>
-            {pairedDevices.map((device) => (
-              <RelayDeviceGroup key={device.deviceId} device={device} transport={transport!} />
+            {deviceStatusList.map((deviceStatus) => (
+              <RemoteDeviceGroup
+                key={`${deviceStatus.config.tailscaleHost}:${deviceStatus.config.port}`}
+                deviceStatus={deviceStatus}
+              />
             ))}
           </SidebarMenu>
         )}

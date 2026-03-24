@@ -1,12 +1,4 @@
 /**
-<<<<<<< Updated upstream
- * Remote device discovery via relay-based presence.
- *
- * Devices register with a relay server and the relay tracks who is online.
- */
-import { useEffect, useRef, useState } from "react";
-import { RelayTransport, type PairedDevice } from "~/lib/relay-transport";
-=======
  * Remote device discovery — dual-mode: WebSocket push + HTTP polling fallback.
  *
  * Primary mode: Once a WebSocket connection is established to a remote device,
@@ -20,7 +12,24 @@ import type { RemoteDeviceConfig } from "./appSettings";
 import { WsTransport, type TransportState } from "./wsTransport";
 import type { RemotePresenceState, RemoteSessionsPayload } from "@t3tools/contracts";
 import { WS_CHANNELS, WS_METHODS } from "@t3tools/contracts";
->>>>>>> Stashed changes
+
+// ── Types ────────────────────────────────────────────────────────────
+
+export interface RemoteSessionInfo {
+  threadId: string;
+  projectId: string;
+  projectName: string;
+  projectCwd: string;
+  status: string;
+  title: string;
+}
+
+export interface RemoteDeviceInfo {
+  deviceId: string;
+  deviceName: string;
+  port: number;
+  sessions: RemoteSessionInfo[];
+}
 
 // ── Relay-based presence ──────────────────────────────────────────────
 
@@ -31,26 +40,6 @@ export interface RelayDevicesConfig {
   pairingToken: string;
 }
 
-<<<<<<< Updated upstream
-/**
- * useRelayDevices — tracks paired device presence via a relay server.
- *
- * Creates and manages a RelayTransport instance. On mount it connects to
- * the relay and begins receiving real-time online/offline/session updates
- * for all previously-paired devices.  On unmount the transport is disposed.
- *
- * Returns the same `pairedDevices` array that RelayTransport maintains so
- * consumers get live online status and session lists.
- */
-export function useRelayDevices(config: RelayDevicesConfig | null): {
-  transport: RelayTransport | null;
-  pairedDevices: PairedDevice[];
-  relayConnected: boolean;
-} {
-  const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
-  const [relayConnected, setRelayConnected] = useState(false);
-  const transportRef = useRef<RelayTransport | null>(null);
-=======
 export interface RemoteDeviceStatus {
   config: RemoteDeviceConfig;
   online: boolean;
@@ -282,40 +271,10 @@ export function useRemoteDevices(devices: readonly RemoteDeviceConfig[]) {
       return next;
     });
   }, [devices]);
->>>>>>> Stashed changes
 
   // ── Effect: Manage WebSocket connections per device ───────────────
 
   useEffect(() => {
-<<<<<<< Updated upstream
-    if (!config?.relayUrl || !config.deviceId || !config.pairingToken) {
-      setPairedDevices([]);
-      setRelayConnected(false);
-      return;
-    }
-
-    const transport = new RelayTransport({
-      relayUrl: config.relayUrl,
-      deviceId: config.deviceId,
-      deviceName: config.deviceName,
-      pairingToken: config.pairingToken,
-      onConnected: () => setRelayConnected(true),
-      onDisconnected: () => setRelayConnected(false),
-      onPairedDevicesChanged: (devices) => setPairedDevices([...devices]),
-    });
-
-    transportRef.current = transport;
-    void transport.connect();
-
-    return () => {
-      transportRef.current = null;
-      transport.dispose();
-      setRelayConnected(false);
-    };
-    // Only rebuild the transport when connection-identity fields change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config?.relayUrl, config?.deviceId, config?.pairingToken]);
-=======
     if (devices.length === 0) {
       // Tear down all WS connections
       for (const key of wsConnectionsRef.current.keys()) {
@@ -366,11 +325,9 @@ export function useRemoteDevices(devices: readonly RemoteDeviceConfig[]) {
       }
     };
   }, [teardownWsConnection]);
->>>>>>> Stashed changes
 
   return {
-    transport: transportRef.current,
-    pairedDevices,
-    relayConnected,
+    statuses,
+    wsConnections: wsConnectionsRef.current,
   };
 }

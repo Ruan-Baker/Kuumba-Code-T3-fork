@@ -13,7 +13,6 @@ const POLL_INTERVAL_MS = 2_000;
 
 // Lazy-loaded HTTP client
 let httpClient: any = null;
-let clientReady = false;
 
 async function getClient() {
   if (httpClient) return httpClient;
@@ -22,7 +21,6 @@ async function getClient() {
   try {
     const { ConvexHttpClient } = await import("convex/browser");
     httpClient = new ConvexHttpClient(CONVEX_URL);
-    clientReady = true;
     console.log("[convex-mobile] Client initialized:", CONVEX_URL);
     return httpClient;
   } catch (err) {

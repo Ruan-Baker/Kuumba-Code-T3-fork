@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ORCHESTRATION_WS_METHODS, ORCHESTRATION_WS_CHANNELS } from "@t3tools/contracts";
 import type { ChatMessage } from "~/components/MessagesList";
 import type { WsPushChannel, WsPushMessage } from "@t3tools/contracts";
-import { useConvexThreadState, type ConvexThreadState } from "./convexClient";
+import { useConvexThreadState } from "./convexClient";
 
 /** Minimal transport interface — both WsTransport and RelayTransport satisfy this. */
 interface Transport {

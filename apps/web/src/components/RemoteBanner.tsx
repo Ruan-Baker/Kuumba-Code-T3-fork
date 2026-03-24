@@ -1,10 +1,3 @@
-<<<<<<< Updated upstream
-import { MonitorIcon } from "lucide-react";
-import { useRemoteConnectionStore } from "../remoteConnection";
-
-export function RemoteBanner() {
-  const { isActive, connectedDeviceName } = useRemoteConnectionStore();
-=======
 import { MonitorIcon, XIcon, WifiIcon, AlertTriangleIcon, WifiOffIcon } from "lucide-react";
 import { useRemoteConnectionStore } from "../remoteConnection";
 import { useConnectionContext, selectPresence, selectRemoteDeviceName } from "../connectionContext";
@@ -34,7 +27,7 @@ function presenceLabel(presence: RemotePresenceState): string | null {
     case "degraded":
       return "Connection unstable";
     case "reconnecting":
-      return "Reconnecting…";
+      return "Reconnecting...";
     case "offline":
       return "Offline";
     case "error":
@@ -52,7 +45,6 @@ export function RemoteBanner() {
   const deviceName = useConnectionContext(selectRemoteDeviceName);
   const { resetToLocal } = useConnectionContext();
   const navigate = useNavigate();
->>>>>>> Stashed changes
 
   const isRemote = useConnectionContext((s) => s.mode === "remote");
 
@@ -61,23 +53,18 @@ export function RemoteBanner() {
   const displayName = deviceName ?? "Unknown device";
   const statusLabel = presenceLabel(presence);
 
-<<<<<<< Updated upstream
-=======
   const handleDisconnect = () => {
     resetToLocal();
     disconnect();
     void navigate({ to: "/" });
   };
 
->>>>>>> Stashed changes
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border-b border-blue-500/20 text-xs text-blue-600 dark:text-blue-400">
       <MonitorIcon className="size-3.5 shrink-0" />
       <span className="flex-1 truncate">
         Viewing remote session on <strong>{displayName}</strong>
       </span>
-<<<<<<< Updated upstream
-=======
       {presenceIcon(presence)}
       {statusLabel && <span className="text-[10px] text-muted-foreground/70">{statusLabel}</span>}
       <button
@@ -88,7 +75,6 @@ export function RemoteBanner() {
         <XIcon className="size-3" />
         Disconnect
       </button>
->>>>>>> Stashed changes
     </div>
   );
 }
