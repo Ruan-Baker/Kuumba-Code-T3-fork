@@ -6,9 +6,14 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { RadioIcon } from "lucide-react";
+<<<<<<< Updated upstream
 import { ensureNativeApi, isRemoteApiActive } from "../../nativeApi";
 import { useRelay } from "../../lib/useRelayConnection";
 import { useSharedThreadsStore } from "../../lib/sharedThreadsStore";
+=======
+import { ensureNativeApi } from "../../nativeApi";
+import { useConnectionContext } from "../../connectionContext";
+>>>>>>> Stashed changes
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Toggle } from "../ui/toggle";
 
@@ -23,7 +28,7 @@ export function RemoteSharingToggle({ threadId }: RemoteSharingToggleProps) {
   const setSharedInStore = useSharedThreadsStore((s) => s.setShared);
 
   // Don't show the toggle when already viewing a remote session
-  const isRemote = isRemoteApiActive();
+  const isRemote = useConnectionContext((s) => s.mode === "remote");
 
   // Fetch current sharing state on mount / thread change
   useEffect(() => {

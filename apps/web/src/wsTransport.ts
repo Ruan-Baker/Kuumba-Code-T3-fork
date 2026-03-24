@@ -5,6 +5,7 @@ import {
   WebSocketResponse,
   type WsResponse as WsResponseMessage,
   WsResponse as WsResponseSchema,
+  type RemotePresenceState,
 } from "@t3tools/contracts";
 import { decodeUnknownJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
 import { Result, Schema } from "effect";
@@ -21,10 +22,30 @@ interface SubscribeOptions {
   readonly replayLatest?: boolean;
 }
 
-type TransportState = "connecting" | "open" | "reconnecting" | "closed" | "disposed";
+export type TransportState = "connecting" | "open" | "reconnecting" | "closed" | "disposed";
+
+export type TransportStateChangeListener = (
+  newState: TransportState,
+  prevState: TransportState,
+) => void;
+
+export type PresenceStateChangeListener = (
+  newState: RemotePresenceState,
+  prevState: RemotePresenceState,
+) => void;
 
 const REQUEST_TIMEOUT_MS = 60_000;
-const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
+const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000, 10_000];
+
+/** Server heartbeat interval expected from the server (2s) */
+const HEARTBEAT_EXPECTED_INTERVAL_MS = 2_000;
+/** Mark presence as degraded if no heartbeat/message for 6s */
+const PRESENCE_DEGRADED_THRESHOLD_MS = 6_000;
+/** Mark presence as offline if no heartbeat/message for 10s */
+const PRESENCE_OFFLINE_THRESHOLD_MS = 10_000;
+/** Check presence health at this interval */
+const PRESENCE_CHECK_INTERVAL_MS = 1_000;
+
 const decodeWsResponse = decodeUnknownJsonResult(WsResponseSchema);
 const isWebSocketResponseEnvelope = Schema.is(WebSocketResponse);
 
@@ -59,6 +80,19 @@ export class WsTransport {
   private state: TransportState = "connecting";
   private readonly url: string;
 
+  // ── Heartbeat / Presence ──────────────────────────────────────────
+  private lastMessageReceivedAt = 0;
+  private presenceState: RemotePresenceState = "connecting";
+  private presenceCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ── Sequence Tracking ─────────────────────────────────────────────
+  private lastPushSequence = 0;
+  private readonly lastSequenceByChannel = new Map<string, number>();
+
+  // ── Listeners ─────────────────────────────────────────────────────
+  private readonly stateChangeListeners = new Set<TransportStateChangeListener>();
+  private readonly presenceChangeListeners = new Set<PresenceStateChangeListener>();
+
   constructor(url?: string) {
     const bridgeUrl = window.desktopBridge?.getWsUrl();
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
@@ -69,8 +103,11 @@ export class WsTransport {
         : envUrl && envUrl.length > 0
           ? envUrl
           : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${window.location.port}`);
+    this.startPresenceMonitor();
     this.connect();
   }
+
+  // ── Public API ────────────────────────────────────────────────────
 
   async request<T = unknown>(method: string, params?: unknown): Promise<T> {
     if (typeof method !== "string" || method.length === 0) {
@@ -138,9 +175,40 @@ export class WsTransport {
     return this.state;
   }
 
+  getPresenceState(): RemotePresenceState {
+    return this.presenceState;
+  }
+
+  /** Last global push sequence number received from the server. */
+  getLastPushSequence(): number {
+    return this.lastPushSequence;
+  }
+
+  /** Last push sequence for a specific channel. Returns 0 if no push received yet. */
+  getLastChannelSequence(channel: string): number {
+    return this.lastSequenceByChannel.get(channel) ?? 0;
+  }
+
+  /** Register a callback fired whenever the transport state changes. */
+  onStateChange(listener: TransportStateChangeListener): () => void {
+    this.stateChangeListeners.add(listener);
+    return () => {
+      this.stateChangeListeners.delete(listener);
+    };
+  }
+
+  /** Register a callback fired whenever the presence state changes. */
+  onPresenceChange(listener: PresenceStateChangeListener): () => void {
+    this.presenceChangeListeners.add(listener);
+    return () => {
+      this.presenceChangeListeners.delete(listener);
+    };
+  }
+
   dispose() {
     this.disposed = true;
-    this.state = "disposed";
+    this.setTransportState("disposed");
+    this.stopPresenceMonitor();
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -155,22 +223,29 @@ export class WsTransport {
     this.ws = null;
   }
 
+  // ── Private: Connection ───────────────────────────────────────────
+
   private connect() {
     if (this.disposed) {
       return;
     }
 
-    this.state = this.reconnectAttempt > 0 ? "reconnecting" : "connecting";
+    const nextState: TransportState = this.reconnectAttempt > 0 ? "reconnecting" : "connecting";
+    this.setTransportState(nextState);
+    this.setPresenceState("connecting");
     const ws = new WebSocket(this.url);
 
     ws.addEventListener("open", () => {
       this.ws = ws;
-      this.state = "open";
+      this.setTransportState("open");
       this.reconnectAttempt = 0;
+      this.lastMessageReceivedAt = Date.now();
+      this.setPresenceState("healthy");
       this.flushQueue();
     });
 
     ws.addEventListener("message", (event) => {
+      this.lastMessageReceivedAt = Date.now();
       this.handleMessage(event.data);
     });
 
@@ -179,18 +254,20 @@ export class WsTransport {
         this.ws = null;
       }
       if (this.disposed) {
-        this.state = "disposed";
+        this.setTransportState("disposed");
         return;
       }
-      this.state = "closed";
+      this.setTransportState("closed");
+      this.setPresenceState("reconnecting");
       this.scheduleReconnect();
     });
 
     ws.addEventListener("error", (event) => {
-      // Log WebSocket errors for debugging (close event will follow)
       console.warn("WebSocket connection error", { type: event.type, url: this.url });
     });
   }
+
+  // ── Private: Message Handling ─────────────────────────────────────
 
   private handleMessage(raw: unknown) {
     const result = decodeWsResponse(raw);
@@ -201,6 +278,18 @@ export class WsTransport {
 
     const message = result.success;
     if (isWsPushMessage(message)) {
+      // Track sequences
+      if (typeof message.sequence === "number") {
+        this.lastPushSequence = Math.max(this.lastPushSequence, message.sequence);
+        const prevChannelSeq = this.lastSequenceByChannel.get(message.channel) ?? 0;
+        this.lastSequenceByChannel.set(message.channel, Math.max(prevChannelSeq, message.sequence));
+      }
+
+      // Update presence on any server.presence push
+      if (message.channel === "server.presence") {
+        this.setPresenceState("healthy");
+      }
+
       this.latestPushByChannel.set(message.channel, message);
       const channelListeners = this.listeners.get(message.channel);
       if (channelListeners) {
@@ -235,6 +324,8 @@ export class WsTransport {
     pending.resolve(message.result);
   }
 
+  // ── Private: Send / Queue ─────────────────────────────────────────
+
   private send(encodedMessage: string) {
     if (this.disposed) {
       return;
@@ -267,6 +358,8 @@ export class WsTransport {
     }
   }
 
+  // ── Private: Reconnect ────────────────────────────────────────────
+
   private scheduleReconnect() {
     if (this.disposed || this.reconnectTimer !== null) {
       return;
@@ -281,5 +374,71 @@ export class WsTransport {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  // ── Private: Presence Monitor ─────────────────────────────────────
+
+  private startPresenceMonitor() {
+    if (this.presenceCheckTimer !== null) return;
+    this.presenceCheckTimer = setInterval(() => {
+      this.evaluatePresence();
+    }, PRESENCE_CHECK_INTERVAL_MS);
+  }
+
+  private stopPresenceMonitor() {
+    if (this.presenceCheckTimer !== null) {
+      clearInterval(this.presenceCheckTimer);
+      this.presenceCheckTimer = null;
+    }
+  }
+
+  private evaluatePresence() {
+    if (this.disposed) {
+      this.setPresenceState("offline");
+      return;
+    }
+
+    // If we're not in an open state, presence is managed by connect/close handlers
+    if (this.state !== "open") {
+      return;
+    }
+
+    const elapsed = Date.now() - this.lastMessageReceivedAt;
+
+    if (elapsed >= PRESENCE_OFFLINE_THRESHOLD_MS) {
+      this.setPresenceState("offline");
+    } else if (elapsed >= PRESENCE_DEGRADED_THRESHOLD_MS) {
+      this.setPresenceState("degraded");
+    } else {
+      this.setPresenceState("healthy");
+    }
+  }
+
+  // ── Private: State Change Notification ────────────────────────────
+
+  private setTransportState(newState: TransportState) {
+    const prev = this.state;
+    if (prev === newState) return;
+    this.state = newState;
+    for (const listener of this.stateChangeListeners) {
+      try {
+        listener(newState, prev);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  }
+
+  private setPresenceState(newState: RemotePresenceState) {
+    const prev = this.presenceState;
+    if (prev === newState) return;
+    this.presenceState = newState;
+    for (const listener of this.presenceChangeListeners) {
+      try {
+        listener(newState, prev);
+      } catch {
+        // Swallow listener errors
+      }
+    }
   }
 }

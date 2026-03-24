@@ -1,5 +1,12 @@
 import { Schema, Struct } from "effect";
-import { NonNegativeInt, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TurnId,
+} from "./baseSchemas";
 
 import {
   ClientOrchestrationCommand,
@@ -76,6 +83,9 @@ export const WS_METHODS = {
   // Session sharing
   sessionsSetRemoteSharing: "sessions.setRemoteSharing",
   sessionsGetRemoteSharing: "sessions.getRemoteSharing",
+  remoteGetSessions: "remote.getSessions",
+  remoteGetConnectionInfo: "remote.getConnectionInfo",
+  remoteResume: "remote.resume",
 
   // Server meta
   serverGetConfig: "server.getConfig",
@@ -87,7 +97,11 @@ export const WS_METHODS = {
 export const WS_CHANNELS = {
   terminalEvent: "terminal.event",
   serverWelcome: "server.welcome",
+  serverPresence: "server.presence",
   serverConfigUpdated: "server.configUpdated",
+  remoteSessions: "remote.sessions",
+  remoteSessionUpdated: "remote.sessionUpdated",
+  remoteRecoveryRequired: "remote.recoveryRequired",
 } as const;
 
 // -- Tagged Union of all request body schemas ─────────────────────────
@@ -156,6 +170,17 @@ const WebSocketRequestBody = Schema.Union([
       threadId: TrimmedNonEmptyString,
     }),
   ),
+  tagRequestBody(WS_METHODS.remoteGetSessions, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.remoteGetConnectionInfo, Schema.Struct({})),
+  tagRequestBody(
+    WS_METHODS.remoteResume,
+    Schema.Struct({
+      lastOrchestrationSequence: NonNegativeInt,
+      lastTerminalSequenceByTerminalKey: Schema.Record(TrimmedNonEmptyString, NonNegativeInt).pipe(
+        Schema.withDecodingDefault(() => ({})),
+      ),
+    }),
+  ),
 
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
@@ -190,10 +215,84 @@ export const WsWelcomePayload = Schema.Struct({
 });
 export type WsWelcomePayload = typeof WsWelcomePayload.Type;
 
+export const RemotePresenceState = Schema.Literals([
+  "connecting",
+  "healthy",
+  "degraded",
+  "reconnecting",
+  "offline",
+  "auth_failed",
+  "error",
+]);
+export type RemotePresenceState = typeof RemotePresenceState.Type;
+
+export const RemoteSessionListItem = Schema.Struct({
+  threadId: ThreadId,
+  projectId: ProjectId,
+  projectName: TrimmedNonEmptyString,
+  projectCwd: TrimmedNonEmptyString,
+  title: Schema.String,
+  sessionStatus: Schema.String,
+  lastUpdatedAt: IsoDateTime,
+  remoteShareEnabled: Schema.Boolean,
+  activeTurnId: Schema.NullOr(TurnId),
+  hasTerminalActivity: Schema.optional(Schema.Boolean),
+});
+export type RemoteSessionListItem = typeof RemoteSessionListItem.Type;
+
+export const RemoteConnectionInfo = Schema.Struct({
+  deviceId: TrimmedNonEmptyString,
+  deviceName: TrimmedNonEmptyString,
+  serverTime: IsoDateTime,
+  lastOrchestrationSequence: NonNegativeInt,
+});
+export type RemoteConnectionInfo = typeof RemoteConnectionInfo.Type;
+
+export const RemoteResumeResult = Schema.Struct({
+  connection: RemoteConnectionInfo,
+  needsReplayFromSequenceExclusive: NonNegativeInt,
+  needsFullResync: Schema.Boolean,
+});
+export type RemoteResumeResult = typeof RemoteResumeResult.Type;
+
+export const ServerPresencePayload = Schema.Struct({
+  state: RemotePresenceState,
+  serverTime: IsoDateTime,
+  deviceId: TrimmedNonEmptyString,
+  deviceName: TrimmedNonEmptyString,
+  lastOrchestrationSequence: NonNegativeInt,
+});
+export type ServerPresencePayload = typeof ServerPresencePayload.Type;
+
+export const RemoteSessionsPayload = Schema.Struct({
+  deviceId: TrimmedNonEmptyString,
+  deviceName: TrimmedNonEmptyString,
+  sessions: Schema.Array(RemoteSessionListItem),
+  generatedAt: IsoDateTime,
+});
+export type RemoteSessionsPayload = typeof RemoteSessionsPayload.Type;
+
+export const RemoteSessionUpdatedPayload = Schema.Struct({
+  session: Schema.NullOr(RemoteSessionListItem),
+  removedThreadId: Schema.NullOr(ThreadId),
+  generatedAt: IsoDateTime,
+});
+export type RemoteSessionUpdatedPayload = typeof RemoteSessionUpdatedPayload.Type;
+
+export const RemoteRecoveryRequiredPayload = Schema.Struct({
+  reason: TrimmedNonEmptyString,
+  generatedAt: IsoDateTime,
+});
+export type RemoteRecoveryRequiredPayload = typeof RemoteRecoveryRequiredPayload.Type;
+
 export interface WsPushPayloadByChannel {
   readonly [WS_CHANNELS.serverWelcome]: WsWelcomePayload;
+  readonly [WS_CHANNELS.serverPresence]: ServerPresencePayload;
   readonly [WS_CHANNELS.serverConfigUpdated]: typeof ServerConfigUpdatedPayload.Type;
   readonly [WS_CHANNELS.terminalEvent]: typeof TerminalEvent.Type;
+  readonly [WS_CHANNELS.remoteSessions]: RemoteSessionsPayload;
+  readonly [WS_CHANNELS.remoteSessionUpdated]: RemoteSessionUpdatedPayload;
+  readonly [WS_CHANNELS.remoteRecoveryRequired]: RemoteRecoveryRequiredPayload;
   readonly [ORCHESTRATION_WS_CHANNELS.domainEvent]: OrchestrationEvent;
 }
 
@@ -212,11 +311,27 @@ const makeWsPushSchema = <const Channel extends string, Payload extends Schema.S
   });
 
 export const WsPushServerWelcome = makeWsPushSchema(WS_CHANNELS.serverWelcome, WsWelcomePayload);
+export const WsPushServerPresence = makeWsPushSchema(
+  WS_CHANNELS.serverPresence,
+  ServerPresencePayload,
+);
 export const WsPushServerConfigUpdated = makeWsPushSchema(
   WS_CHANNELS.serverConfigUpdated,
   ServerConfigUpdatedPayload,
 );
 export const WsPushTerminalEvent = makeWsPushSchema(WS_CHANNELS.terminalEvent, TerminalEvent);
+export const WsPushRemoteSessions = makeWsPushSchema(
+  WS_CHANNELS.remoteSessions,
+  RemoteSessionsPayload,
+);
+export const WsPushRemoteSessionUpdated = makeWsPushSchema(
+  WS_CHANNELS.remoteSessionUpdated,
+  RemoteSessionUpdatedPayload,
+);
+export const WsPushRemoteRecoveryRequired = makeWsPushSchema(
+  WS_CHANNELS.remoteRecoveryRequired,
+  RemoteRecoveryRequiredPayload,
+);
 export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   ORCHESTRATION_WS_CHANNELS.domainEvent,
   OrchestrationEvent,
@@ -224,16 +339,24 @@ export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
 
 export const WsPushChannelSchema = Schema.Literals([
   WS_CHANNELS.serverWelcome,
+  WS_CHANNELS.serverPresence,
   WS_CHANNELS.serverConfigUpdated,
   WS_CHANNELS.terminalEvent,
+  WS_CHANNELS.remoteSessions,
+  WS_CHANNELS.remoteSessionUpdated,
+  WS_CHANNELS.remoteRecoveryRequired,
   ORCHESTRATION_WS_CHANNELS.domainEvent,
 ]);
 export type WsPushChannelSchema = typeof WsPushChannelSchema.Type;
 
 export const WsPush = Schema.Union([
   WsPushServerWelcome,
+  WsPushServerPresence,
   WsPushServerConfigUpdated,
   WsPushTerminalEvent,
+  WsPushRemoteSessions,
+  WsPushRemoteSessionUpdated,
+  WsPushRemoteRecoveryRequired,
   WsPushOrchestrationDomainEvent,
 ]);
 export type WsPush = typeof WsPush.Type;

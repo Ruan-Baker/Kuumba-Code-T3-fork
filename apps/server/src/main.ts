@@ -28,6 +28,14 @@ import { Server } from "./wsServer";
 import { ServerLoggerLive } from "./serverLogger";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
+import {
+  RemoteSharingRepository,
+  RemoteSharingRepositoryLive,
+} from "./persistence/RemoteSharingRepository.ts";
+import {
+  RemoteCommandReceiptRepository,
+  RemoteCommandReceiptRepositoryLive,
+} from "./persistence/RemoteCommandReceiptRepository.ts";
 
 export class StartupError extends Data.TaggedError("StartupError")<{
   readonly message: string;
@@ -249,11 +257,22 @@ const ServerConfigLive = (input: CliInput) =>
     }),
   );
 
+const RemoteSharingRepositoryLayer = Layer.effect(
+  RemoteSharingRepository,
+  RemoteSharingRepositoryLive,
+);
+const RemoteCommandReceiptRepositoryLayer = Layer.effect(
+  RemoteCommandReceiptRepository,
+  RemoteCommandReceiptRepositoryLive,
+);
+
 const LayerLive = (input: CliInput) =>
   Layer.empty.pipe(
     Layer.provideMerge(makeServerRuntimeServicesLayer()),
     Layer.provideMerge(makeServerProviderLayer()),
     Layer.provideMerge(ProviderHealthLive),
+    Layer.provideMerge(RemoteSharingRepositoryLayer),
+    Layer.provideMerge(RemoteCommandReceiptRepositoryLayer),
     Layer.provideMerge(SqlitePersistence.layerConfig),
     Layer.provideMerge(ServerLoggerLive),
     Layer.provideMerge(AnalyticsServiceLayerLive),

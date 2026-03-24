@@ -53,6 +53,14 @@ import { GitCore } from "./git/Services/GitCore.ts";
 import { GitCommandError, GitManagerError } from "./git/Errors.ts";
 import { MigrationError } from "@effect/sql-sqlite-bun/SqliteMigrator";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
+import {
+  RemoteSharingRepository,
+  RemoteSharingRepositoryLive,
+} from "./persistence/RemoteSharingRepository.ts";
+import {
+  RemoteCommandReceiptRepository,
+  RemoteCommandReceiptRepositoryLive,
+} from "./persistence/RemoteCommandReceiptRepository.ts";
 
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
 const asProviderItemId = (value: string): ProviderItemId => ProviderItemId.makeUnsafe(value);
@@ -531,7 +539,17 @@ describe("WebSocket Server", () => {
       ),
       runtimeOverrides,
     );
+    const remoteSharingRepoLayer = Layer.effect(
+      RemoteSharingRepository,
+      RemoteSharingRepositoryLive,
+    );
+    const remoteCommandReceiptRepoLayer = Layer.effect(
+      RemoteCommandReceiptRepository,
+      RemoteCommandReceiptRepositoryLive,
+    );
     const dependenciesLayer = Layer.empty.pipe(
+      Layer.provideMerge(remoteSharingRepoLayer),
+      Layer.provideMerge(remoteCommandReceiptRepoLayer),
       Layer.provideMerge(runtimeLayer),
       Layer.provideMerge(providerHealthLayer),
       Layer.provideMerge(openLayer),

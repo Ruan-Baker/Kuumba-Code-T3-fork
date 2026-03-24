@@ -59,7 +59,7 @@ import { ProviderHealth } from "./provider/Services/ProviderHealth";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
 import { clamp } from "effect/Number";
 import { Open, resolveAvailableEditors } from "./open";
-import { ServerConfig } from "./config";
+import { ServerConfig, type ServerConfigShape } from "./config";
 import { GitCore } from "./git/Services/GitCore.ts";
 import { tryHandleProjectFaviconRequest } from "./projectFaviconRoute";
 import {
@@ -77,6 +77,14 @@ import { parseBase64DataUrl } from "./imageMime.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { expandHomePath } from "./os-jank.ts";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
+import {
+  RemoteSharingRepository,
+  RemoteSharingRepositoryLive,
+} from "./persistence/RemoteSharingRepository.ts";
+import {
+  RemoteCommandReceiptRepository,
+  RemoteCommandReceiptRepositoryLive,
+} from "./persistence/RemoteCommandReceiptRepository.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
 
@@ -218,7 +226,9 @@ export type ServerRuntimeServices =
   | TerminalManager
   | Keybindings
   | Open
-  | AnalyticsService;
+  | AnalyticsService
+  | RemoteSharingRepository
+  | RemoteCommandReceiptRepository;
 
 export class ServerLifecycleError extends Schema.TaggedErrorClass<ServerLifecycleError>()(
   "ServerLifecycleError",
@@ -231,6 +241,39 @@ export class ServerLifecycleError extends Schema.TaggedErrorClass<ServerLifecycl
 class RouteRequestError extends Schema.TaggedErrorClass<RouteRequestError>()("RouteRequestError", {
   message: Schema.String,
 }) {}
+
+function buildRemoteSessionList(
+  snapshot: any,
+  sharedIds: ReadonlySet<string>,
+  config: ServerConfigShape,
+  hostname: string,
+  serverPort: number,
+) {
+  const sessions = (snapshot.threads as any[])
+    .filter((t: any) => t.session && t.session.status !== "stopped" && sharedIds.has(t.id))
+    .map((t: any) => {
+      const project = (snapshot.projects as any[]).find((p: any) => p.id === t.projectId);
+      return {
+        threadId: t.id,
+        projectId: t.projectId,
+        projectName: project?.name ?? "Unknown",
+        projectCwd: project?.cwd ?? "",
+        title: t.title ?? "",
+        sessionStatus: t.session?.status ?? "idle",
+        lastUpdatedAt: t.updatedAt ?? new Date().toISOString(),
+        remoteShareEnabled: true,
+        activeTurnId: t.session?.activeTurnId ?? null,
+        hasTerminalActivity: false,
+      };
+    });
+
+  return {
+    deviceId: config.deviceId ?? `${hostname}-${serverPort}`,
+    deviceName: config.deviceName ?? hostname,
+    sessions,
+    generatedAt: new Date().toISOString(),
+  };
+}
 
 export const createServer = Effect.fn(function* (): Effect.fn.Return<
   http.Server,
@@ -273,8 +316,16 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
 
   const clients = yield* Ref.make(new Set<WebSocket>());
-  /** In-memory set of thread IDs that are shared remotely. Resets on server restart. */
-  const sharedThreadIds = new Set<string>();
+  const remoteSharingRepo = yield* RemoteSharingRepository;
+  const remoteCommandReceiptRepo = yield* RemoteCommandReceiptRepository;
+  /** Cached set of shared thread IDs, synced with durable storage. */
+  let sharedThreadIds = yield* remoteSharingRepo
+    .getAllSharedThreadIds()
+    .pipe(
+      Effect.mapError(
+        (cause) => new ServerLifecycleError({ operation: "loadSharedThreadIds", cause }),
+      ),
+    );
   const logger = createLogger("ws");
   const readiness = yield* makeServerReadiness;
 
@@ -865,6 +916,21 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   yield* Effect.addFinalizer(() => Effect.sync(() => unsubscribeTerminalEvents()));
   yield* readiness.markTerminalSubscriptionsReady;
 
+  // ── Server Heartbeat ────────────────────────────────────────────
+  const HEARTBEAT_INTERVAL_MS = 2_000;
+  const heartbeatTimer = setInterval(() => {
+    void Effect.runPromise(
+      pushBus.publishAll(WS_CHANNELS.serverPresence, {
+        state: "healthy",
+        serverTime: new Date().toISOString(),
+        deviceId: serverConfig.deviceId ?? `${os.hostname()}-${port}`,
+        deviceName: serverConfig.deviceName ?? os.hostname(),
+        lastOrchestrationSequence: 0,
+      }),
+    );
+  }, HEARTBEAT_INTERVAL_MS);
+  yield* Effect.addFinalizer(() => Effect.sync(() => clearInterval(heartbeatTimer)));
+
   yield* NodeHttpServer.make(() => httpServer, listenOptions).pipe(
     Effect.mapError((cause) => new ServerLifecycleError({ operation: "httpServerListen", cause })),
   );
@@ -977,17 +1043,53 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
       case WS_METHODS.sessionsSetRemoteSharing: {
         const body = stripRequestTag(request.body);
-        if (body.shared) {
-          sharedThreadIds.add(body.threadId);
-        } else {
-          sharedThreadIds.delete(body.threadId);
-        }
+        yield* remoteSharingRepo
+          .setSharing(body.threadId, body.shared)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new RouteRequestError({
+                  message: `Failed to set remote sharing: ${String(cause)}`,
+                }),
+            ),
+          );
+        // Refresh the cached set
+        sharedThreadIds = yield* remoteSharingRepo
+          .getAllSharedThreadIds()
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new RouteRequestError({
+                  message: `Failed to refresh shared thread IDs: ${String(cause)}`,
+                }),
+            ),
+          );
+        // Push updated session list to all connected clients
+        const sharingSnapshot = yield* projectionReadModelQuery.getSnapshot();
+        const updatedSessions = buildRemoteSessionList(
+          sharingSnapshot,
+          sharedThreadIds,
+          serverConfig,
+          os.hostname(),
+          port,
+        );
+        yield* pushBus.publishAll(WS_CHANNELS.remoteSessions, updatedSessions);
         return { shared: body.shared };
       }
 
       case WS_METHODS.sessionsGetRemoteSharing: {
         const body = stripRequestTag(request.body);
-        return { shared: sharedThreadIds.has(body.threadId) };
+        const isShared = yield* remoteSharingRepo
+          .isShared(body.threadId)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new RouteRequestError({
+                  message: `Failed to check remote sharing: ${String(cause)}`,
+                }),
+            ),
+          );
+        return { shared: isShared };
       }
 
       case WS_METHODS.shellOpenInEditor: {
@@ -1097,6 +1199,37 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const body = stripRequestTag(request.body);
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
         return { keybindings: keybindingsConfig, issues: [] };
+      }
+
+      case WS_METHODS.remoteGetSessions: {
+        const snapshot = yield* projectionReadModelQuery.getSnapshot();
+        return buildRemoteSessionList(snapshot, sharedThreadIds, serverConfig, os.hostname(), port);
+      }
+
+      case WS_METHODS.remoteGetConnectionInfo: {
+        return {
+          deviceId: serverConfig.deviceId ?? `${os.hostname()}-${port}`,
+          deviceName: serverConfig.deviceName ?? os.hostname(),
+          serverTime: new Date().toISOString(),
+          lastOrchestrationSequence: 0,
+        };
+      }
+
+      case WS_METHODS.remoteResume: {
+        const body = stripRequestTag(request.body);
+        const connectionInfo = {
+          deviceId: serverConfig.deviceId ?? `${os.hostname()}-${port}`,
+          deviceName: serverConfig.deviceName ?? os.hostname(),
+          serverTime: new Date().toISOString(),
+          lastOrchestrationSequence: 0,
+        };
+        // For now, always request full resync for simplicity
+        // The replay path can be refined later once we track sequence more precisely
+        return {
+          connection: connectionInfo,
+          needsReplayFromSequenceExclusive: body.lastOrchestrationSequence,
+          needsFullResync: body.lastOrchestrationSequence === 0,
+        };
       }
 
       default: {

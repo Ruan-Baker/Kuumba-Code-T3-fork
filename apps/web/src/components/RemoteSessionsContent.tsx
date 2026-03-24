@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+<<<<<<< Updated upstream
 import { useAppSettings } from "../appSettings";
 import { useRelay } from "../lib/useRelayConnection";
 import { useRemoteConnectionStore } from "../remoteConnection";
@@ -17,6 +18,20 @@ import type { RelayTransport } from "../lib/relay-transport";
 import { createRelayNativeApi } from "../wsNativeApi";
 import { setActiveApi } from "../nativeApi";
 import { setActiveRemoteBridge } from "../remoteConnection";
+=======
+import { useAppSettings, type RemoteDeviceConfig } from "../appSettings";
+import {
+  useRemoteDevices,
+  type RemoteDeviceStatus,
+  type RemoteSessionInfo,
+} from "../remoteDevices";
+import { useRemoteConnectionStore } from "../remoteConnection";
+import { createRemoteNativeApi } from "../wsNativeApi";
+import { useConnectionContext } from "../connectionContext";
+import { buildRemoteWsUrl } from "../remoteConnection";
+import { WsTransport } from "../wsTransport";
+import { setNotesApiOverride, clearNotesApiOverride } from "../projectNotesStore";
+>>>>>>> Stashed changes
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
@@ -110,6 +125,7 @@ function RelayDeviceGroup({
       bridge.handleRelayMessage(plaintext);
     });
 
+<<<<<<< Updated upstream
     // Store bridge globally so ChatView can use it for composer state sync
     setActiveRemoteBridge(bridge);
     connectViaRelay(transport, device.deviceId, device.deviceName);
@@ -128,6 +144,23 @@ function RelayDeviceGroup({
         void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
       })
       .finally(() => setLoading(false));
+=======
+  const { setRemote } = useConnectionContext();
+
+  const handleSessionClick = async (session: RemoteSessionInfo) => {
+    try {
+      connect(deviceStatus.config, deviceStatus.info?.deviceName ?? deviceStatus.config.name);
+      const wsUrl = buildRemoteWsUrl(deviceStatus.config);
+      const transport = new WsTransport(wsUrl);
+      const remoteApi = createRemoteNativeApi(wsUrl);
+      const deviceName = deviceStatus.info?.deviceName ?? deviceStatus.config.name;
+      setRemote(remoteApi, transport, deviceStatus.config, deviceName);
+      setStatus("connected");
+      void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
+    } catch (err) {
+      setStatus("error", err instanceof Error ? err.message : "Connection failed");
+    }
+>>>>>>> Stashed changes
   };
 
   const sessions = device.sessions;
