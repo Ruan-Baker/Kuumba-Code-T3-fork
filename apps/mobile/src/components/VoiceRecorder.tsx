@@ -122,6 +122,18 @@ export const VoiceRecorder = memo(function VoiceRecorder({
 
   const isRecording = state.phase === "recording";
   const isProcessing = state.phase === "transcribing" || state.phase === "cleaning";
+  const isError = state.phase === "error";
+
+  // Auto-dismiss error state after 3s so mic button comes back
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (isError) {
+      errorTimerRef.current = setTimeout(() => cancel(), 3000);
+    }
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    };
+  }, [isError, cancel]);
 
   return (
     <>
@@ -154,20 +166,26 @@ export const VoiceRecorder = memo(function VoiceRecorder({
           {isProcessing && (
             <div className="flex w-full items-center justify-center gap-2.5 px-4">
               <Loader2 className="size-4 animate-spin text-primary" />
-              <span className="text-sm text-muted-foreground">Cleaning up...</span>
+              <span className="text-sm text-muted-foreground">
+                {state.phase === "transcribing" ? "Transcribing..." : "Cleaning up..."}
+              </span>
             </div>
           )}
         </div>
       )}
 
-      {/* Mic button */}
+      {/* Mic button — visible when idle or in error state */}
       {!isRecording && !isProcessing && (
         <button
           onClick={() => void handleMicTap()}
-          disabled={disabled}
+          disabled={disabled || isError}
           className={cn(
             "flex size-8 items-center justify-center rounded-full",
-            disabled ? "text-muted-foreground/30" : "text-muted-foreground active:bg-muted",
+            isError
+              ? "text-destructive"
+              : disabled
+                ? "text-muted-foreground/30"
+                : "text-muted-foreground active:bg-muted",
           )}
         >
           <Mic className="size-4" />
