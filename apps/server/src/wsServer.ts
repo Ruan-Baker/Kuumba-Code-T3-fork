@@ -250,7 +250,7 @@ function buildRemoteSessionList(
   serverPort: number,
 ) {
   const sessions = (snapshot.threads as any[])
-    .filter((t: any) => t.session && t.session.status !== "stopped" && sharedIds.has(t.id))
+    .filter((t: any) => t.session && t.session.status !== "stopped")
     .map((t: any) => {
       const project = (snapshot.projects as any[]).find((p: any) => p.id === t.projectId);
       return {
@@ -495,7 +495,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
             ),
           );
           const sessions = (snapshot.threads as any[])
-            .filter((t) => t.session && t.session.status !== "stopped" && sharedThreadIds.has(t.id))
+            .filter((t) => t.session && t.session.status !== "stopped")
             .map((t) => {
               const project = (snapshot.projects as any[]).find((p) => p.id === t.projectId);
               return {

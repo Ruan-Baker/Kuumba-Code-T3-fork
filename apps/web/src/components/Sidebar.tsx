@@ -83,7 +83,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { RemoteSessionsContent } from "./RemoteSessionsContent";
 import type { SidebarTab } from "../store";
-import { useSharedThreadsStore } from "../lib/sharedThreadsStore";
+import { useRelay } from "../lib/useRelayConnection";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 6;
@@ -1583,9 +1583,10 @@ export default function Sidebar() {
   );
 }
 
-function ThreadSharedDot({ threadId }: { threadId: string }) {
-  const isShared = useSharedThreadsStore((s) => s.sharedThreadIds.has(threadId));
-  if (!isShared) return null;
+function ThreadSharedDot({ threadId: _threadId }: { threadId: string }) {
+  const { connected, pairedDevices } = useRelay();
+  // All sessions are always remote when a device is connected
+  if (!connected || pairedDevices.length === 0) return null;
   return (
     <span
       className="inline-block size-1.5 shrink-0 rounded-full bg-green-500"

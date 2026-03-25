@@ -13,7 +13,6 @@ import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScr
 import { Toggle } from "../ui/toggle";
 import { SidebarTrigger } from "../ui/sidebar";
 import { OpenInPicker } from "./OpenInPicker";
-import { RemoteSharingToggle } from "./RemoteSharingToggle";
 
 interface ChatHeaderProps {
   activeThreadId: ThreadId;
@@ -76,7 +75,6 @@ export const ChatHeader = memo(function ChatHeader({
         )}
       </div>
       <div className="@container/header-actions flex min-w-0 flex-1 items-center justify-end gap-2 @sm/header-actions:gap-3">
-        <RemoteSharingToggle threadId={activeThreadId} />
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}
