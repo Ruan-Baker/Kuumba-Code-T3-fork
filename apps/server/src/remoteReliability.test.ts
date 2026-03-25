@@ -38,8 +38,8 @@ const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(SqlitePersistenceMemory),
 );
 
-function runTest<A>(effect: Effect.Effect<A, any, RemoteSharingRepository | RemoteCommandReceiptRepository>) {
-  return Effect.runPromise(Effect.provide(effect, TestLayer));
+function runTest<A, E>(effect: Effect.Effect<A, E, RemoteSharingRepository | RemoteCommandReceiptRepository>) {
+  return Effect.runPromise(effect.pipe(Effect.provide(TestLayer), Effect.orDie));
 }
 
 // ── Durable Remote Sharing ──────────────────────────────────────────
