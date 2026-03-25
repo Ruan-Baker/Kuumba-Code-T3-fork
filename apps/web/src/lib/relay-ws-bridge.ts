@@ -167,6 +167,22 @@ export class RelayWsBridge {
     return latest ? (latest as WsPushMessage<C>) : null;
   }
 
+  // --- WsTransport-compatible stubs for connectionContext ---
+  // These allow RelayWsBridge to be passed as a WsTransport to setRemote().
+
+  getPresenceState(): "healthy" | "reconnecting" | "connecting" {
+    return "healthy";
+  }
+
+  onPresenceChange(_cb: (state: "healthy" | "reconnecting" | "connecting") => void): () => void {
+    // Relay bridges don't have heartbeat-based presence — always healthy while connected.
+    return () => {};
+  }
+
+  onStateChange(_cb: (state: "open" | "closed" | "reconnecting") => void): () => void {
+    return () => {};
+  }
+
   dispose(): void {
     this.disposed = true;
     for (const pending of this.pending.values()) {

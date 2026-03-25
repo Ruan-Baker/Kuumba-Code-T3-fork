@@ -14,17 +14,19 @@ import {
   type RemoteDeviceStatus,
   type RemoteSessionInfo,
 } from "../remoteDevices";
-import { useRemoteConnectionStore } from "../remoteConnection";
-import { createRemoteNativeApi } from "../wsNativeApi";
+import {
+  useRemoteConnectionStore,
+  setActiveRemoteBridge,
+} from "../remoteConnection";
+import { createRelayNativeApi } from "../wsNativeApi";
 import { useConnectionContext } from "../connectionContext";
-import { WsTransport } from "../wsTransport";
 import { useRelay } from "../lib/useRelayConnection";
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
-import { Badge } from "./ui/badge";
 import {
   SidebarContent,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -33,39 +35,26 @@ import {
   SidebarMenuSubItem,
 } from "./ui/sidebar";
 
-function statusColor(status: string): string {
+// ── Status helpers ─────────────────────────────────────────────────────
+
+function threadStatusInfo(status: string) {
   switch (status) {
     case "running":
+      return { label: "Working", dotClass: "bg-green-500", colorClass: "text-green-600 dark:text-green-400", pulse: true };
     case "ready":
-      return "bg-green-500";
+      return { label: "Ready", dotClass: "bg-green-500", colorClass: "text-green-600 dark:text-green-400", pulse: false };
     case "starting":
+      return { label: "Starting", dotClass: "bg-yellow-500", colorClass: "text-yellow-600 dark:text-yellow-400", pulse: true };
     case "idle":
-      return "bg-yellow-500";
+      return { label: "Idle", dotClass: "bg-yellow-500", colorClass: "text-yellow-600 dark:text-yellow-400", pulse: false };
     case "error":
-      return "bg-red-500";
+      return { label: "Error", dotClass: "bg-red-500", colorClass: "text-red-600 dark:text-red-400", pulse: false };
     default:
-      return "bg-gray-400";
+      return { label: status || "Unknown", dotClass: "bg-gray-400", colorClass: "text-muted-foreground", pulse: false };
   }
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case "running":
-      return "Working";
-    case "ready":
-      return "Ready";
-    case "starting":
-      return "Starting";
-    case "idle":
-      return "Idle";
-    case "error":
-      return "Error";
-    default:
-      return status;
-  }
-}
-
-/** Group sessions by projectId so we can show notes per project */
+/** Group sessions by projectId */
 function groupSessionsByProject(sessions: RemoteSessionInfo[]) {
   const groups = new Map<
     string,
@@ -96,21 +85,38 @@ function RemoteDeviceGroup({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { setStatus } = useRemoteConnectionStore();
+  const { setStatus, connectViaRelay } = useRemoteConnectionStore();
   const { setRemote } = useConnectionContext();
+  const { transport } = useRelay();
   const navigate = useNavigate();
 
   const handleSessionClick = async (session: RemoteSessionInfo) => {
     if (loading) return;
     setLoading(true);
     try {
-      // For relay devices, connection is handled through the relay transport.
-      // We create a placeholder transport — the actual relay bridge handles RPC proxying.
       const deviceName = deviceStatus.info?.deviceName ?? deviceStatus.config.name;
-      setRemote(null as any, null as any, deviceStatus.config, deviceName);
+      const targetDeviceId = deviceStatus.config.deviceId;
+
+      if (!transport) {
+        throw new Error("Relay transport not connected");
+      }
+
+      // Create a real relay bridge + NativeApi for this remote device
+      const { api, bridge } = createRelayNativeApi(transport, targetDeviceId);
+
+      // Store the bridge so other components can use it
+      setActiveRemoteBridge(bridge);
+
+      // Switch the global connection context to remote mode
+      // RelayWsBridge implements the WsTransport interface (subscribe, request, dispose, etc.)
+      setRemote(api, bridge as any, deviceStatus.config, deviceName);
+      connectViaRelay(transport, targetDeviceId, deviceName);
       setStatus("connected");
+
+      // Navigate to the thread
       void navigate({ to: "/$threadId", params: { threadId: session.threadId } });
     } catch (err) {
+      console.error("[RemoteSession] Failed to connect:", err);
       setStatus("error", err instanceof Error ? err.message : "Connection failed");
     } finally {
       setLoading(false);
@@ -144,56 +150,69 @@ function RemoteDeviceGroup({
         </SidebarMenuButton>
 
         <CollapsibleContent>
-          <SidebarMenuSub className="mx-1 my-0 w-full translate-x-0 gap-0.5 px-1.5 py-0">
-            {!deviceStatus.online ? (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground/60 italic">
-                Device offline
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground/60 italic">
-                No active sessions
-              </div>
-            ) : (
-              projectGroups.map((group) => (
-                <div key={group.projectCwd} className="mb-1">
-                  <div className="group/project flex items-center gap-1 px-1 py-0.5">
-                    <span className="flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                      {group.projectName}
-                    </span>
-                    <div className="opacity-0 group-hover/project:opacity-100 transition-opacity">
-                      <ProjectNotesPopover
-                        projectCwd={group.projectCwd}
-                        projectName={group.projectName}
-                      />
-                    </div>
+          {!deviceStatus.online ? (
+            <div className="px-4 py-2 text-xs text-muted-foreground/60 italic">
+              Device offline
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="px-4 py-2 text-xs text-muted-foreground/60 italic">
+              No active sessions
+            </div>
+          ) : (
+            projectGroups.map((group) => (
+              <Collapsible key={group.projectCwd} defaultOpen>
+                {/* Project header — matches local sidebar style */}
+                <SidebarGroupLabel className="group/project flex h-7 items-center gap-1 px-3">
+                  <span className="flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                    {group.projectName}
+                  </span>
+                  <div className="shrink-0 opacity-0 transition-opacity group-hover/project:opacity-100">
+                    <ProjectNotesPopover
+                      projectCwd={group.projectCwd}
+                      projectName={group.projectName}
+                    />
                   </div>
-                  {group.sessions.map((session) => (
-                    <SidebarMenuSubItem key={session.threadId}>
-                      <SidebarMenuSubButton
-                        className="flex items-center gap-1.5 py-1"
-                        onClick={() => void handleSessionClick(session)}
-                      >
-                        <span
-                          className={`size-1.5 shrink-0 rounded-full ${statusColor(session.status)}`}
-                        />
-                        <span className="flex-1 truncate text-xs">
-                          {session.title || session.projectName}
-                        </span>
-                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 leading-none">
-                          {statusLabel(session.status)}
-                        </Badge>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ))}
-                </div>
-              ))
-            )}
-          </SidebarMenuSub>
+                </SidebarGroupLabel>
+
+                {/* Session items — matches local sidebar thread items */}
+                <SidebarMenuSub className="mr-0 w-full translate-x-0 gap-0 border-l-0 px-0">
+                  {group.sessions.map((session) => {
+                    const status = threadStatusInfo(session.status);
+                    return (
+                      <SidebarMenuSubItem key={session.threadId} className="w-full">
+                        <SidebarMenuSubButton
+                          size="sm"
+                          className="flex w-full items-center gap-1.5 py-1 pr-2"
+                          onClick={() => void handleSessionClick(session)}
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                            <span className={`inline-flex items-center gap-1 text-[10px] ${status.colorClass}`}>
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
+                                  status.pulse ? "animate-pulse" : ""
+                                }`}
+                              />
+                              <span className="hidden md:inline">{status.label}</span>
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs">
+                              {session.title || session.projectName}
+                            </span>
+                          </div>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    );
+                  })}
+                </SidebarMenuSub>
+              </Collapsible>
+            ))
+          )}
         </CollapsibleContent>
       </Collapsible>
     </SidebarMenuItem>
   );
 }
+
+// ── Main content ───────────────────────────────────────────────────────
 
 export function RemoteSessionsContent() {
   const { settings } = useAppSettings();
@@ -204,8 +223,6 @@ export function RemoteSessionsContent() {
   const { statuses, updateDeviceSessions, updateDeviceStatus } = useRemoteDevices(remoteDevices);
 
   // Wire relay paired device data into the UI status map.
-  // When the relay reports a device as online with sessions, update the status map
-  // so the Remote tab shows green dots and session lists.
   useEffect(() => {
     for (const pd of pairedDevices) {
       const matchingConfig = remoteDevices.find((rd) => rd.deviceId === pd.deviceId);
@@ -234,7 +251,6 @@ export function RemoteSessionsContent() {
 
   const hasDevices = remoteDevices.length > 0;
 
-  // Show empty state when no remote devices are configured
   if (!hasDevices) {
     return (
       <SidebarContent>
@@ -266,7 +282,7 @@ export function RemoteSessionsContent() {
 
   return (
     <SidebarContent>
-      <SidebarGroup>
+      <SidebarGroup className="gap-0">
         {deviceStatusList.length === 0 ? (
           <div className="px-3 py-2 text-[11px] text-muted-foreground/50 italic">
             Connecting to remote devices...
