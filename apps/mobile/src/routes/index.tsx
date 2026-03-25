@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { ChatHeader } from "~/components/ChatHeader";
 import { Composer } from "~/components/Composer";
 import { MessagesList } from "~/components/MessagesList";
+import { cn } from "~/lib/utils";
 import { MessageSkeleton } from "~/components/LoadingSkeleton";
 import { ModelPicker } from "~/components/ModelPicker";
 import { ApprovalPanel } from "~/components/ApprovalPanel";
@@ -13,6 +16,8 @@ import { useConnectionStore } from "~/stores/connectionStore";
 import { useSession } from "~/lib/useSession";
 import { NotesModal } from "~/components/NotesModal";
 import { useNotesStore, setMobileNotesPushHandler } from "~/stores/notesStore";
+import { useTerminalStore } from "~/stores/terminalStore";
+import { TerminalViewer } from "~/components/TerminalViewer";
 import { RelayTransport } from "~/lib/relayTransport";
 
 export const Route = createFileRoute("/")({
@@ -33,6 +38,12 @@ function ChatView() {
   );
   const [fastMode, setFastMode] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const terminalVisible = useTerminalStore((s) => s.visible);
+  const setTerminalVisible = useTerminalStore((s) => s.setVisible);
+
+  // Collapsible state for the device session list on the home screen
+  const [collapsedDevices, setCollapsedDevices] = useState<Set<string>>(new Set());
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
 
   const savedDevices = useSettingsStore((s) => s.savedDevices);
   const { devices, refreshAll } = useDevicesStore();
@@ -158,6 +169,22 @@ function ChatView() {
       setMobileNotesPushHandler(null);
     };
   }, [setNotesSyncHandler, getActiveTransport]);
+
+  // Subscribe to terminal events from desktop via relay push
+  useEffect(() => {
+    const t = getActiveTransport();
+    if (!t || !(t instanceof RelayTransport)) return;
+
+    const unsub = t.subscribe("terminal.event" as any, (message: { channel: string; data: unknown }) => {
+      useTerminalStore.getState().handleTerminalEvent(message.data);
+    });
+
+    // Reset terminal store when transport changes
+    return () => {
+      unsub();
+      useTerminalStore.getState().reset();
+    };
+  }, [getActiveTransport]);
 
   // Session hook
   const transport = getActiveTransport();
@@ -322,17 +349,6 @@ function ChatView() {
           }
           // Hard reload like Ctrl+Shift+R
           window.location.reload();
-          return;
-          // Dead code below — kept for reference
-          doPoll();
-          for (const device of savedDevices) {
-            if (device.isRelay) {
-              const t = getActiveTransport();
-              if (t && "queryDevices" in t && typeof (t as any).queryDevices === "function") {
-                (t as any).queryDevices();
-              }
-            }
-          }
         }}
         onOpenNotes={() => setNotesOpen(true)}
         hasNotes={hasSession}
@@ -371,28 +387,198 @@ function ChatView() {
           </button>
         </main>
       ) : hasSession ? (
-        <MessagesList
-          messages={session.messages}
-          activities={session.activities}
-          proposedPlans={session.proposedPlans}
-          threadTitle={session.thread?.title}
-          projectName={session.thread?.projectName}
-          deviceHost={activeDevice?.config.host}
-          devicePort={activeDevice?.config.port}
-          authToken={activeDevice?.config.authToken}
-        />
+        <>
+          {/* Session toolbar with terminal toggle */}
+          <div className="flex items-center justify-between border-b border-border px-4 py-1.5">
+            <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
+              {session.thread?.projectName ?? "Session"}
+            </span>
+            <button
+              onClick={() => setTerminalVisible(true)}
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground active:bg-muted"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              Terminal
+            </button>
+          </div>
+          <MessagesList
+            messages={session.messages}
+            activities={session.activities}
+            proposedPlans={session.proposedPlans}
+            threadTitle={session.thread?.title}
+            projectName={session.thread?.projectName}
+            deviceHost={activeDevice?.config.host}
+            devicePort={activeDevice?.config.port}
+            authToken={activeDevice?.config.authToken}
+          />
+        </>
       ) : (
-        <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4">
-          <div className="flex flex-col items-center gap-4 text-center">
+        <main className="flex flex-1 flex-col overflow-y-auto px-4 pb-4">
+          {/* Hero */}
+          <div className="flex flex-col items-center gap-3 pt-8 pb-6 text-center">
             <img src="/icon.png" alt="Kuumba Code" className="size-16 rounded-2xl" />
             <h1 className="text-xl font-bold text-foreground">Kuumba Code</h1>
-            <p className="text-sm text-muted-foreground">Mobile Companion</p>
-            <p className="max-w-[280px] text-sm leading-relaxed text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {savedDevices.length > 0
-                ? "Select a session from the device picker to start monitoring."
+                ? "Select a session to start monitoring"
                 : "Connect to a desktop running Kuumba Code to monitor and interact with coding sessions remotely."}
             </p>
           </div>
+
+          {/* Device cards */}
+          {headerDevices.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {headerDevices.map((device) => {
+                const totalSessions = device.projects.reduce(
+                  (sum, p) => sum + p.sessions.length,
+                  0,
+                );
+                const isDeviceCollapsed = collapsedDevices.has(device.deviceId);
+
+                return (
+                  <div
+                    key={device.deviceId}
+                    className="overflow-hidden rounded-xl border border-border bg-card"
+                  >
+                    {/* Device header — tap to collapse/expand */}
+                    <button
+                      className="flex w-full items-center gap-3 px-4 py-3 active:bg-muted/50"
+                      onClick={() =>
+                        setCollapsedDevices((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(device.deviceId)) next.delete(device.deviceId);
+                          else next.add(device.deviceId);
+                          return next;
+                        })
+                      }
+                    >
+                      <span
+                        className={cn(
+                          "size-2.5 shrink-0 rounded-full",
+                          device.online ? "bg-emerald-500" : "bg-red-500",
+                        )}
+                      />
+                      <div className="flex min-w-0 flex-1 flex-col items-start">
+                        <span className="text-sm font-semibold text-foreground">
+                          {device.deviceName}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {totalSessions} session{totalSessions !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <ChevronDown
+                        className={cn(
+                          "size-4 text-muted-foreground transition-transform duration-200",
+                          isDeviceCollapsed && "-rotate-90",
+                        )}
+                      />
+                    </button>
+
+                    {/* Device body — projects & sessions */}
+                    {!isDeviceCollapsed && (
+                      <div className="border-t border-border px-4 pb-3 pt-1">
+                        {device.projects.map((project) => {
+                          const projectKey = `${device.deviceId}:${project.projectName}`;
+                          const isProjectCollapsed = collapsedProjects.has(projectKey);
+
+                          return (
+                            <div key={projectKey} className="mt-2">
+                              {/* Project header — tap to collapse/expand */}
+                              <button
+                                className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 active:bg-muted/50"
+                                onClick={() =>
+                                  setCollapsedProjects((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(projectKey)) next.delete(projectKey);
+                                    else next.add(projectKey);
+                                    return next;
+                                  })
+                                }
+                              >
+                                <ChevronRight
+                                  className={cn(
+                                    "size-3.5 text-muted-foreground transition-transform duration-200",
+                                    !isProjectCollapsed && "rotate-90",
+                                  )}
+                                />
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  {project.projectName}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground/60">
+                                  {project.sessions.length}
+                                </span>
+                              </button>
+
+                              {/* Sessions list */}
+                              {!isProjectCollapsed && (
+                                <div className="ml-1 flex flex-col gap-0.5">
+                                  {project.sessions.map((s) => (
+                                    <button
+                                      key={s.threadId}
+                                      className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-left active:bg-muted/60"
+                                      onClick={() =>
+                                        handleSelectSession(device.deviceId, s.threadId)
+                                      }
+                                    >
+                                      <span
+                                        className={cn(
+                                          "size-1.5 shrink-0 rounded-full",
+                                          s.status === "running"
+                                            ? "bg-blue-500"
+                                            : s.status === "ready" || s.status === "idle"
+                                              ? "bg-emerald-500"
+                                              : s.status === "error"
+                                                ? "bg-red-500"
+                                                : "bg-muted-foreground/40",
+                                        )}
+                                      />
+                                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                                        {s.title}
+                                      </span>
+                                      <span className="shrink-0 text-[11px] capitalize text-muted-foreground">
+                                        {s.status}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {device.projects.length === 0 && (
+                          <p className="py-3 text-center text-xs text-muted-foreground">
+                            No shared sessions
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : savedDevices.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Link
+                to="/connect"
+                className="rounded-lg border border-dashed border-border px-6 py-3 text-sm font-medium text-primary active:bg-muted/50"
+              >
+                + Add a device
+              </Link>
+            </div>
+          ) : null}
         </main>
       )}
 
@@ -466,6 +652,11 @@ function ChatView() {
         transport={transport}
         projectCwd={session.thread?.projectCwd ?? ""}
         projectName={session.thread?.projectName ?? ""}
+      />
+
+      <TerminalViewer
+        open={terminalVisible}
+        onClose={() => setTerminalVisible(false)}
       />
     </div>
   );

@@ -50,6 +50,10 @@ export class RelayInboundBridge {
     | ((data: { cwd: string; editorState: string; timestamp: number }) => void)
     | null = null;
 
+  /** Callback to notify that sessions changed (new session started, status changed, etc.)
+   *  Used by useRelayConnection to trigger a relay session list refresh. */
+  onSessionsChanged: (() => void) | null = null;
+
   /** Callback to get live composer state from the desktop's ChatView */
   getComposerStateLive:
     | (() => {
@@ -399,8 +403,15 @@ export class RelayInboundBridge {
   }
 
   private forwardPushToMobiles(raw: string): void {
+    // Send to all active mobile devices
     for (const deviceId of this.activeMobileDevices) {
       void this.relay.sendToDevice(deviceId, raw).catch(() => {});
+    }
+    // Fallback: also try all paired devices (catches devices that haven't sent an RPC yet)
+    for (const device of this.relay.getPairedDevices()) {
+      if (!this.activeMobileDevices.has(device.deviceId)) {
+        void this.relay.sendToDevice(device.deviceId, raw).catch(() => {});
+      }
     }
 
     // Also sync state to Convex for mobile fallback
@@ -498,6 +509,8 @@ export class RelayInboundBridge {
             tracker.sessionStatus = status;
             tracker.isStreaming = status === "running" || status === "starting";
             shouldSync = true; // Session status change — sync immediately
+            // Notify that sessions changed so relay session list gets updated
+            this.onSessionsChanged?.();
           }
           break;
         }

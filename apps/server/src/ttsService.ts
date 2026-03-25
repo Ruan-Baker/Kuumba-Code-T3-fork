@@ -7,6 +7,7 @@
 
 import path from "node:path";
 import os from "node:os";
+import { createRequire } from "node:module";
 
 const VOICE_ID = "bf_emma";
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
@@ -36,10 +37,29 @@ export async function initTTS(cacheDir?: string): Promise<void> {
     console.log(`[tts] Home: ${os.homedir()}`);
     const startTime = Date.now();
 
-    // Dynamic import so it doesn't block server startup if missing
+    // Use CJS require to load kokoro-js instead of ESM dynamic import.
+    //
+    // Why: kokoro-js ships both ESM (kokoro.js) and CJS (kokoro.cjs) entry
+    // points.  The ESM entry uses `import.meta.dirname` with an ESM
+    // `import from "fs/promises"` to resolve voice files relative to the
+    // module directory.  In packaged Electron builds the module lives inside
+    // an asar archive; the ESM fs/promises import can bypass Electron's asar
+    // patches, causing ENOTDIR ("not a directory") when Node tries to
+    // traverse into the .asar file as if it were a real directory.
+    //
+    // The CJS entry uses `__dirname` (always available in CJS) and
+    // `require("fs/promises")` which goes through Electron's patched module
+    // loader — both fully asar-compatible.
+    //
+    // Using `createRequire` also ensures that kokoro-js and this module
+    // share the same CJS module-cache singleton for @huggingface/transformers,
+    // so the cache-dir settings below apply to the instance kokoro-js
+    // actually uses (the previous dynamic import loaded a separate bundled
+    // copy of transformers where the settings had no effect).
+    const cjsRequire = createRequire(import.meta.url);
+
     console.log("[tts] Importing kokoro-js...");
-    const kokoroModule = await import("kokoro-js");
-    const { KokoroTTS } = kokoroModule;
+    const { KokoroTTS } = cjsRequire("kokoro-js");
     console.log("[tts] kokoro-js imported successfully");
 
     // Point the HuggingFace cache to a writable directory.
@@ -52,11 +72,13 @@ export async function initTTS(cacheDir?: string): Promise<void> {
     console.log(`[tts] Model cache directory: ${ttsCacheDir}`);
     console.log(`[tts] Provided cacheDir: ${cacheDir ?? "(none)"}`);
 
-    // kokoro-js re-exports @huggingface/transformers env — set cache paths
-    // before loading the model so files go to a writable location.
+    // Set cache paths on the same @huggingface/transformers instance that
+    // kokoro-js uses internally.  Because both cjsRequire calls resolve to
+    // the same file in node_modules, CJS module caching guarantees we get
+    // the exact singleton — unlike the previous approach which set the env
+    // on a bundled (separate) copy of the module.
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const hfModule = await import("@huggingface/transformers" as string);
+      const hfModule = cjsRequire("@huggingface/transformers");
       if (hfModule?.env) {
         hfModule.env.cacheDir = ttsCacheDir;
         hfModule.env.localModelPath = ttsCacheDir;

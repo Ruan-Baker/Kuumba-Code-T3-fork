@@ -220,6 +220,7 @@ const win = window as unknown as {
   __relayTransport?: RelayTransport | null;
   __relayBridge?: RelayInboundBridge | null;
   __relayConfig?: { relayUrl: string; pairingToken: string; deviceId: string };
+  __relaySessionRefreshInterval?: ReturnType<typeof setInterval> | null;
 };
 
 function getGlobalTransport(): RelayTransport | null {
@@ -401,6 +402,27 @@ export function useRelayConnection(): RelayConnectionState {
             setGlobalBridge(new RelayInboundBridge(transport, localWsUrl));
             console.log("[relay] Inbound bridge started for mobile RPC proxying");
           }
+
+          // Wire up session-change callback on the bridge so new sessions
+          // are immediately pushed to the relay (and thus to mobile)
+          if (getGlobalBridge()) {
+            getGlobalBridge()!.onSessionsChanged = () => {
+              void fetchLocalDeviceInfo().then((sessions) => {
+                console.log(`[relay] Session change detected — pushing ${sessions.length} session(s) to relay`);
+                transport.updateSessions(sessions);
+              });
+            };
+          }
+
+          // Periodic session refresh — safety net to catch any missed session changes
+          if (win.__relaySessionRefreshInterval) {
+            clearInterval(win.__relaySessionRefreshInterval);
+          }
+          win.__relaySessionRefreshInterval = setInterval(() => {
+            void fetchLocalDeviceInfo().then((sessions) => {
+              transport.updateSessions(sessions);
+            });
+          }, 10_000); // Every 10 seconds
 
           // Initialize Convex sync for thread state persistence
           const convexUrl = readConvexUrl();

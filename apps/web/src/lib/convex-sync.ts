@@ -15,7 +15,7 @@ let deviceId: string | null = null;
 const syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingState = new Map<string, ThreadStateSnapshot>();
 
-const DEBOUNCE_MS = 2_000;
+const DEBOUNCE_MS = 500;
 
 export interface ThreadStateSnapshot {
   threadId: string;

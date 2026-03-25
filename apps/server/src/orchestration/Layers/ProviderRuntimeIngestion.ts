@@ -162,7 +162,7 @@ function orchestrationSessionStatusFromRuntimeState(
 
 function requestKindFromCanonicalRequestType(
   requestType: string | undefined,
-): "command" | "file-read" | "file-change" | undefined {
+): "command" | "file-read" | "file-change" | "mcp-tool" | undefined {
   switch (requestType) {
     case "command_execution_approval":
     case "exec_command_approval":
@@ -172,6 +172,8 @@ function requestKindFromCanonicalRequestType(
     case "file_change_approval":
     case "apply_patch_approval":
       return "file-change";
+    case "mcp_tool_call_approval":
+      return "mcp-tool";
     default:
       return undefined;
   }

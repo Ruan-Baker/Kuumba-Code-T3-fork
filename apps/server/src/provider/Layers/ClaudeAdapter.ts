@@ -378,11 +378,10 @@ function classifyRequestType(toolName: string): CanonicalRequestType {
     return "file_read_approval";
   }
   const itemType = classifyToolItemType(toolName);
-  return itemType === "command_execution"
-    ? "command_execution_approval"
-    : itemType === "file_change"
-      ? "file_change_approval"
-      : "dynamic_tool_call";
+  if (itemType === "command_execution") return "command_execution_approval";
+  if (itemType === "file_change") return "file_change_approval";
+  if (itemType === "mcp_tool_call") return "mcp_tool_call_approval";
+  return "dynamic_tool_call";
 }
 
 function summarizeToolRequest(toolName: string, input: Record<string, unknown>): string {

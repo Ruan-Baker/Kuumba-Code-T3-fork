@@ -49,24 +49,34 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
-  --background: var(--color-white);
-  --foreground: var(--color-neutral-800);
-  --card: var(--color-white);
-  --card-foreground: var(--color-neutral-800);
-  --popover: var(--color-white);
-  --popover-foreground: var(--color-neutral-800);
+
+  /* Warm off-white backgrounds — reduces eye strain vs pure white */
+  --background: oklch(0.985 0.007 85);
+  --foreground: oklch(0.27 0.02 70);
+  --card: oklch(0.99 0.005 85);
+  --card-foreground: oklch(0.27 0.02 70);
+  --popover: oklch(0.99 0.005 85);
+  --popover-foreground: oklch(0.27 0.02 70);
+
+  /* Primary — keep the orange brand */
   --primary: oklch(0.52 0.155 55);
   --primary-foreground: var(--color-white);
-  --secondary: --alpha(var(--color-black) / 4%);
-  --secondary-foreground: var(--color-neutral-800);
-  --muted: --alpha(var(--color-black) / 4%);
-  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-black));
-  --accent: --alpha(var(--color-black) / 4%);
-  --accent-foreground: var(--color-neutral-800);
+
+  /* Warm-tinted surfaces instead of transparent black */
+  --secondary: oklch(0.955 0.008 85);
+  --secondary-foreground: oklch(0.27 0.02 70);
+  --muted: oklch(0.955 0.008 85);
+  --muted-foreground: oklch(0.55 0.015 70);
+  --accent: oklch(0.955 0.008 85);
+  --accent-foreground: oklch(0.27 0.02 70);
+
+  /* Warm borders — visible but soft */
   --destructive: var(--color-red-500);
-  --border: --alpha(var(--color-black) / 8%);
-  --input: --alpha(var(--color-black) / 10%);
+  --border: oklch(0.915 0.008 85);
+  --input: oklch(0.90 0.01 85);
   --ring: oklch(0.52 0.155 55);
+
+  /* Status colors — unchanged */
   --destructive-foreground: var(--color-red-700);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);

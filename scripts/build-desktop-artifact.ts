@@ -456,6 +456,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     directories: {
       buildResources: "apps/desktop/resources",
     },
+    // Extract kokoro-js voice binaries from the asar archive so they are
+    // accessible as real files on disk.  The kokoro-js voice loader reads
+    // .bin files via fs relative to its module directory; inside an asar
+    // this can fail with ENOTDIR because the .asar file is not a real
+    // directory.  Unpacking ensures the voice files live in the companion
+    // app.asar.unpacked directory where normal fs calls succeed.
+    asarUnpack: ["node_modules/kokoro-js/voices/**"],
   };
   const publishConfig = resolveGitHubPublishConfig();
   if (publishConfig) {

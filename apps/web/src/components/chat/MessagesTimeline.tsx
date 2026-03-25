@@ -853,10 +853,15 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
-  if (!workEntry.toolTitle) {
-    return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
+  const raw = workEntry.toolTitle
+    ? normalizeCompactToolLabel(workEntry.toolTitle)
+    : normalizeCompactToolLabel(workEntry.label);
+  const label = capitalizePhrase(raw);
+  // Prefix MCP tool calls for clarity
+  if (workEntry.itemType === "mcp_tool_call" && !raw.toLowerCase().startsWith("mcp")) {
+    return `MCP: ${label}`;
   }
-  return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
+  return label;
 }
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {

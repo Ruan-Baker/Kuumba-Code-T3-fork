@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { Option, Schema } from "effect";
-import { TrimmedNonEmptyString, type ProviderKind } from "@t3tools/contracts";
+import { TrimmedNonEmptyString, McpServerConfig, type ProviderKind } from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { generateKeyPair } from "@t3tools/shared/e2e-crypto";
 import { useLocalStorage } from "./hooks/useLocalStorage";
@@ -66,6 +66,7 @@ export const AppSettingsSchema = Schema.Struct({
   e2ePrivateKey: Schema.String.pipe(withDefaults(() => "")),
   e2ePublicKey: Schema.String.pipe(withDefaults(() => "")),
   pairedDevices: Schema.Array(PairedDeviceSchema).pipe(withDefaults(() => [])),
+  mcpServers: Schema.Array(McpServerConfig).pipe(withDefaults(() => [])),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {

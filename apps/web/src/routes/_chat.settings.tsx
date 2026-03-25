@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
+import { type ProviderKind, type McpServerConfig, DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
@@ -39,6 +39,7 @@ import {
   Volume2,
   AlertCircle,
   Loader2,
+  WrenchIcon,
 } from "lucide-react";
 import { DeviceQRCode } from "~/components/DeviceQRCode";
 import {
@@ -48,6 +49,278 @@ import {
 } from "~/lib/tts/tts-engine";
 import type { RemoteDeviceConfig } from "~/appSettings";
 import { useRelay } from "~/lib/useRelayConnection";
+
+// ── MCP Servers Settings ──────────────────────────────────────────────
+
+function createEmptyMcpServer(): McpServerConfig {
+  return {
+    id: `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: "",
+    transport: "stdio",
+    command: undefined,
+    args: undefined,
+    url: undefined,
+    env: undefined,
+    enabled: true,
+  };
+}
+
+function McpServersSettings({
+  servers,
+  onUpdate,
+}: {
+  servers: readonly McpServerConfig[];
+  onUpdate: (servers: McpServerConfig[]) => void;
+}) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draft, setDraft] = useState<McpServerConfig>(createEmptyMcpServer);
+  const [isAdding, setIsAdding] = useState(false);
+  const [argsText, setArgsText] = useState("");
+  const [envText, setEnvText] = useState("");
+
+  const startAdd = () => {
+    const empty = createEmptyMcpServer();
+    setDraft(empty);
+    setArgsText("");
+    setEnvText("");
+    setEditingIndex(null);
+    setIsAdding(true);
+  };
+
+  const startEdit = (index: number) => {
+    const server = servers[index]!;
+    setDraft({ ...server });
+    setArgsText((server.args ?? []).join(" "));
+    setEnvText(
+      server.env
+        ? Object.entries(server.env)
+            .map(([k, v]) => `${k}=${v}`)
+            .join("\n")
+        : "",
+    );
+    setEditingIndex(index);
+    setIsAdding(true);
+  };
+
+  const cancelEdit = () => {
+    setIsAdding(false);
+    setEditingIndex(null);
+    setDraft(createEmptyMcpServer());
+    setArgsText("");
+    setEnvText("");
+  };
+
+  const saveServer = () => {
+    if (!draft.name.trim()) return;
+    const parsedArgs =
+      argsText.trim() !== "" ? argsText.trim().split(/\s+/) : undefined;
+    const parsedEnv: Record<string, string> | undefined =
+      envText.trim() !== ""
+        ? Object.fromEntries(
+            envText
+              .trim()
+              .split("\n")
+              .filter((line) => line.includes("="))
+              .map((line) => {
+                const eqIdx = line.indexOf("=");
+                return [line.slice(0, eqIdx), line.slice(eqIdx + 1)];
+              }),
+          )
+        : undefined;
+
+    const saved: McpServerConfig = {
+      ...draft,
+      name: draft.name.trim(),
+      command: draft.transport === "stdio" ? draft.command?.trim() || undefined : undefined,
+      args: draft.transport === "stdio" ? parsedArgs : undefined,
+      url: draft.transport !== "stdio" ? draft.url?.trim() || undefined : undefined,
+      env: parsedEnv,
+    };
+
+    const updated = [...servers];
+    if (editingIndex !== null) {
+      updated[editingIndex] = saved;
+    } else {
+      updated.push(saved);
+    }
+    onUpdate(updated as McpServerConfig[]);
+    cancelEdit();
+  };
+
+  const removeServer = (index: number) => {
+    onUpdate(servers.filter((_, i) => i !== index) as McpServerConfig[]);
+  };
+
+  const toggleEnabled = (index: number) => {
+    const updated = [...servers];
+    updated[index] = { ...updated[index]!, enabled: !updated[index]!.enabled };
+    onUpdate(updated as McpServerConfig[]);
+  };
+
+  const isFormValid = draft.name.trim() !== "";
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-medium text-foreground">MCP Servers</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Configure Model Context Protocol servers that extend your AI agent with custom tools (e.g.
+          GitHub, database, filesystem access).
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {/* Existing servers list */}
+        {servers.length > 0 ? (
+          <div className="space-y-2">
+            {servers.map((server, index) => (
+              <div
+                key={server.id}
+                className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2"
+              >
+                <WrenchIcon className="size-4 shrink-0 text-muted-foreground/60" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-foreground">{server.name}</p>
+                  <p className="truncate font-mono text-[11px] text-muted-foreground">
+                    {server.transport === "stdio"
+                      ? server.command ?? "–"
+                      : server.url ?? "–"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Switch
+                    checked={server.enabled}
+                    onCheckedChange={() => toggleEnabled(index)}
+                    aria-label={`${server.enabled ? "Disable" : "Enable"} ${server.name}`}
+                  />
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => startEdit(index)}
+                    aria-label={`Edit ${server.name}`}
+                  >
+                    <PencilIcon className="size-3" />
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => removeServer(index)}
+                    aria-label={`Remove ${server.name}`}
+                  >
+                    <TrashIcon className="size-3 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-border bg-background px-3 py-4 text-center text-xs text-muted-foreground">
+            No MCP servers configured. Add one to extend your agent with custom tools.
+          </div>
+        )}
+
+        {/* Add/Edit form */}
+        {isAdding ? (
+          <div className="space-y-3 rounded-xl border border-border bg-background/50 p-4">
+            <h3 className="text-xs font-medium text-foreground">
+              {editingIndex !== null ? "Edit MCP Server" : "Add MCP Server"}
+            </h3>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">Name</span>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                placeholder="e.g. GitHub, Filesystem"
+                spellCheck={false}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">Transport</span>
+              <Select
+                value={draft.transport}
+                onValueChange={(v) =>
+                  setDraft({ ...draft, transport: v as McpServerConfig["transport"] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup>
+                  <SelectItem value="stdio">stdio (local command)</SelectItem>
+                  <SelectItem value="sse">SSE (HTTP server)</SelectItem>
+                  <SelectItem value="streamable-http">Streamable HTTP</SelectItem>
+                </SelectPopup>
+              </Select>
+            </label>
+
+            {draft.transport === "stdio" ? (
+              <>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Command</span>
+                  <Input
+                    value={draft.command ?? ""}
+                    onChange={(e) => setDraft({ ...draft, command: e.target.value })}
+                    placeholder="e.g. npx @modelcontextprotocol/server-filesystem"
+                    spellCheck={false}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Arguments (space-separated)</span>
+                  <Input
+                    value={argsText}
+                    onChange={(e) => setArgsText(e.target.value)}
+                    placeholder="e.g. /Users/me/projects"
+                    spellCheck={false}
+                  />
+                </label>
+              </>
+            ) : (
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-foreground">Server URL</span>
+                <Input
+                  value={draft.url ?? ""}
+                  onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+                  placeholder="e.g. http://localhost:3000/mcp"
+                  spellCheck={false}
+                />
+              </label>
+            )}
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">
+                Environment variables (one per line, KEY=VALUE)
+              </span>
+              <textarea
+                className="block w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                rows={3}
+                value={envText}
+                onChange={(e) => setEnvText(e.target.value)}
+                placeholder={"GITHUB_TOKEN=ghp_...\nAPI_KEY=sk-..."}
+                spellCheck={false}
+              />
+            </label>
+
+            <div className="flex items-center gap-2 pt-1">
+              <Button size="sm" onClick={saveServer} disabled={!isFormValid}>
+                {editingIndex !== null ? "Save" : "Add Server"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={cancelEdit}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={startAdd} className="w-full gap-1.5">
+            <PlusIcon className="size-3" />
+            Add MCP Server
+          </Button>
+        )}
+      </div>
+    </section>
+  );
+}
 
 // ── Text-to-Speech Settings ───────────────────────────────────────────
 
@@ -856,6 +1129,11 @@ function SettingsRouteView() {
               onPairDevice={(deviceId, pairingToken, deviceName) =>
                 relay.pairRemoteDevice(deviceId, pairingToken, "", deviceName)
               }
+            />
+
+            <McpServersSettings
+              servers={settings.mcpServers}
+              onUpdate={(mcpServers) => updateSettings({ mcpServers })}
             />
 
             <TextToSpeechSettings />

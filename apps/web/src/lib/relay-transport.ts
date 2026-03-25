@@ -119,13 +119,14 @@ export class RelayTransport {
   updateSessions(sessions: RelaySessionInfo[]): void {
     this.pendingSessions = sessions;
     // Debounce re-registration to avoid spamming device-online events
+    // (300ms is fast enough for near-instant updates but prevents flood)
     if (this._updateSessionsTimer) clearTimeout(this._updateSessionsTimer);
     this._updateSessionsTimer = setTimeout(() => {
       this._updateSessionsTimer = null;
       if (this.registered && this.ws?.readyState === WebSocket.OPEN && this.keyPair) {
         this._register();
       }
-    }, 2000);
+    }, 300);
   }
 
   queryDevices(): void {

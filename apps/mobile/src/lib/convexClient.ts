@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const CONVEX_URL = (import.meta as any).env?.VITE_CONVEX_URL as string | undefined;
-const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 1_000;
 
 // Lazy-loaded HTTP client
 let httpClient: any = null;

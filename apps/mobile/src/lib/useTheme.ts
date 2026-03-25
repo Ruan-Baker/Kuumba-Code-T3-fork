@@ -16,7 +16,7 @@ export function useTheme() {
       // Update meta theme-color for mobile browser chrome
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) {
-        meta.setAttribute("content", resolved === "dark" ? "#1e1c22" : "#ffffff");
+        meta.setAttribute("content", resolved === "dark" ? "#1e1c22" : "#f9f7f3");
       }
     }
 

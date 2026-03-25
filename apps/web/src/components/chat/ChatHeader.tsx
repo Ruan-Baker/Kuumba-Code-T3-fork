@@ -6,7 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
-import { DiffIcon } from "lucide-react";
+import { DiffIcon, TerminalSquare } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -27,11 +27,14 @@ interface ChatHeaderProps {
   diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
   diffOpen: boolean;
+  terminalOpen: boolean;
+  terminalToggleShortcutLabel: string | null;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
   onToggleDiff: () => void;
+  onToggleTerminal: () => void;
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -47,11 +50,14 @@ export const ChatHeader = memo(function ChatHeader({
   diffToggleShortcutLabel,
   gitCwd,
   diffOpen,
+  terminalOpen,
+  terminalToggleShortcutLabel,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
   onToggleDiff,
+  onToggleTerminal,
 }: ChatHeaderProps) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -94,6 +100,27 @@ export const ChatHeader = memo(function ChatHeader({
           />
         )}
         {activeProjectName && <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0"
+                pressed={terminalOpen}
+                onPressedChange={onToggleTerminal}
+                aria-label="Toggle terminal"
+                variant="outline"
+                size="xs"
+              >
+                <TerminalSquare className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {terminalToggleShortcutLabel
+              ? `Toggle terminal (${terminalToggleShortcutLabel})`
+              : "Toggle terminal"}
+          </TooltipPopup>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={

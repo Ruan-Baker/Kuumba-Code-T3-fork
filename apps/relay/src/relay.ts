@@ -11,9 +11,27 @@ interface RegisteredDevice {
   pairedWith: Map<string, { deviceName: string; publicKey: string }>;
 }
 
+interface BufferedMessage {
+  fromDeviceId: string;
+  fromDeviceName: string;
+  encrypted: { iv: string; data: string };
+  timestamp: number;
+}
+
 export class Relay {
   private devices = new Map<string, RegisteredDevice>();
   private connectionAttempts = new Map<string, { count: number; resetAt: number }>();
+
+  /** Per-device message buffer for when target is offline */
+  private messageBuffer = new Map<string, BufferedMessage[]>();
+  private readonly MAX_BUFFER_PER_DEVICE = 200;
+  private readonly BUFFER_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  private bufferCleanupTimer: ReturnType<typeof setInterval>;
+
+  constructor() {
+    // Periodically clean up expired buffered messages
+    this.bufferCleanupTimer = setInterval(() => this.cleanupExpiredBuffers(), 60_000);
+  }
 
   handleConnection(ws: WebSocket, ip: string): void {
     if (!this.checkRateLimit(ip)) {
@@ -105,6 +123,10 @@ export class Relay {
       console.log(
         `[relay] Device re-registered (session update): ${msg.deviceName} (${msg.deviceId.slice(0, 8)}...)`,
       );
+
+      // Drain any messages buffered while this device was offline
+      this.drainBuffer(msg.deviceId);
+
       return msg.deviceId;
     }
 
@@ -136,6 +158,10 @@ export class Relay {
     }
 
     console.log(`[relay] Device registered: ${msg.deviceName} (${msg.deviceId.slice(0, 8)}...)`);
+
+    // Drain any messages buffered while this device was offline
+    this.drainBuffer(msg.deviceId);
+
     return msg.deviceId;
   }
 
@@ -154,7 +180,9 @@ export class Relay {
     }
 
     if (!target) {
-      this.send(sender.ws, { type: "error", message: "Target device is offline" });
+      // Buffer the message for when the device comes back online
+      this.bufferMessage(msg.targetDeviceId, fromDeviceId, sender.deviceName, msg.encrypted);
+      console.log(`[relay] Buffered message for offline device ${msg.targetDeviceId.slice(0, 8)}...`);
       return;
     }
 
@@ -274,5 +302,64 @@ export class Relay {
       pairings += device.pairedWith.size;
     }
     return { devices: this.devices.size, pairings: pairings / 2 };
+  }
+
+  // --- Message buffering for offline devices ---
+
+  private bufferMessage(
+    targetDeviceId: string,
+    fromDeviceId: string,
+    fromDeviceName: string,
+    encrypted: { iv: string; data: string },
+  ): void {
+    let buffer = this.messageBuffer.get(targetDeviceId);
+    if (!buffer) {
+      buffer = [];
+      this.messageBuffer.set(targetDeviceId, buffer);
+    }
+    // Enforce per-device buffer limit (drop oldest when full)
+    if (buffer.length >= this.MAX_BUFFER_PER_DEVICE) {
+      buffer.shift();
+    }
+    buffer.push({ fromDeviceId, fromDeviceName, encrypted, timestamp: Date.now() });
+  }
+
+  private drainBuffer(deviceId: string): void {
+    const buffer = this.messageBuffer.get(deviceId);
+    if (!buffer || buffer.length === 0) return;
+
+    const device = this.devices.get(deviceId);
+    if (!device) return;
+
+    const now = Date.now();
+    let sent = 0;
+    for (const msg of buffer) {
+      // Skip expired messages
+      if (now - msg.timestamp > this.BUFFER_TTL_MS) continue;
+      this.send(device.ws, {
+        type: "forwarded",
+        fromDeviceId: msg.fromDeviceId,
+        fromDeviceName: msg.fromDeviceName,
+        encrypted: msg.encrypted,
+      });
+      sent++;
+    }
+
+    this.messageBuffer.delete(deviceId);
+    if (sent > 0) {
+      console.log(`[relay] Drained ${sent} buffered messages to device ${deviceId.slice(0, 8)}...`);
+    }
+  }
+
+  private cleanupExpiredBuffers(): void {
+    const now = Date.now();
+    for (const [deviceId, buffer] of this.messageBuffer) {
+      const fresh = buffer.filter((m) => now - m.timestamp < this.BUFFER_TTL_MS);
+      if (fresh.length === 0) {
+        this.messageBuffer.delete(deviceId);
+      } else {
+        this.messageBuffer.set(deviceId, fresh);
+      }
+    }
   }
 }
