@@ -292,6 +292,13 @@ export function createRelayNativeApi(
 ): { api: NativeApi; bridge: RelayWsBridge } {
   const bridge = new RelayWsBridge(relay, targetDeviceId);
 
+  // CRITICAL: Wire up message routing so responses from the remote device
+  // actually get delivered to this bridge. Without this, requests are sent
+  // but responses are silently dropped.
+  relay.registerMessageHandler(targetDeviceId, (plaintext: string) => {
+    bridge.handleRelayMessage(plaintext);
+  });
+
   const api: NativeApi = {
     dialogs: {
       pickFolder: async () => null, // Not supported for remote
