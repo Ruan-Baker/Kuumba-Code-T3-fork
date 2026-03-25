@@ -430,11 +430,13 @@ export function useRelayConnection(): RelayConnectionState {
             void initConvexSync(convexUrl, deviceId);
           }
 
-          // Auto-pair configured remote devices
+          // Auto-pair ALL known devices on reconnect (both remote desktops and QR-scanned mobiles)
           try {
             const raw = localStorage.getItem("t3code:app-settings:v1");
             if (raw) {
               const parsed = JSON.parse(raw);
+
+              // 1. Auto-pair manually configured remote devices (other desktops)
               const remoteDevices = parsed.remoteDevices ?? [];
               for (const rd of remoteDevices) {
                 if (rd.deviceId && rd.pairingToken) {
@@ -444,6 +446,22 @@ export function useRelayConnection(): RelayConnectionState {
                     rd.pairingToken,
                     rd.publicKey ?? "",
                     rd.name || rd.deviceId,
+                  );
+                }
+              }
+
+              // 2. Auto-pair QR-scanned mobile devices (from pairedDevices array)
+              // This ensures mobile devices see this desktop as online immediately
+              // after the desktop app restarts.
+              const qrPairedDevices = parsed.pairedDevices ?? [];
+              for (const pd of qrPairedDevices) {
+                if (pd.deviceId && pd.publicKey) {
+                  console.log(`[relay] Auto-pairing QR-scanned device: ${pd.deviceName || pd.deviceId}`);
+                  void transport.pairWithDevice(
+                    pd.deviceId,
+                    pairingToken, // Use our own pairing token (mobile already knows it from QR)
+                    pd.publicKey,
+                    pd.deviceName || pd.deviceId,
                   );
                 }
               }

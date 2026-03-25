@@ -22,6 +22,18 @@ export class Relay {
   private devices = new Map<string, RegisteredDevice>();
   private connectionAttempts = new Map<string, { count: number; resetAt: number }>();
 
+  /**
+   * Preserved pairings for disconnected devices.
+   * When a device disconnects, its pairings are saved here so they can be
+   * restored when the device reconnects (e.g. desktop app restart).
+   * TTL: 1 hour (cleaned up periodically).
+   */
+  private savedPairings = new Map<
+    string,
+    { pairings: Map<string, { deviceName: string; publicKey: string }>; savedAt: number }
+  >();
+  private readonly PAIRING_TTL_MS = 60 * 60 * 1000; // 1 hour
+
   /** Per-device message buffer for when target is offline */
   private messageBuffer = new Map<string, BufferedMessage[]>();
   private readonly MAX_BUFFER_PER_DEVICE = 200;
@@ -130,7 +142,18 @@ export class Relay {
       return msg.deviceId;
     }
 
-    const existingPairings = existing?.pairedWith ?? new Map();
+    // Restore pairings: from existing entry, or from saved pairings (after disconnect)
+    let restoredPairings = existing?.pairedWith ?? new Map<string, { deviceName: string; publicKey: string }>();
+    if (restoredPairings.size === 0) {
+      const saved = this.savedPairings.get(msg.deviceId);
+      if (saved && Date.now() - saved.savedAt < this.PAIRING_TTL_MS) {
+        restoredPairings = saved.pairings;
+        console.log(
+          `[relay] Restored ${restoredPairings.size} saved pairing(s) for ${msg.deviceName} (${msg.deviceId.slice(0, 8)}...)`,
+        );
+      }
+      this.savedPairings.delete(msg.deviceId);
+    }
 
     const device: RegisteredDevice = {
       deviceId: msg.deviceId,
@@ -139,12 +162,13 @@ export class Relay {
       publicKey: msg.publicKey,
       sessions: msg.sessions ?? [],
       ws,
-      pairedWith: existingPairings,
+      pairedWith: restoredPairings,
     };
 
     this.devices.set(msg.deviceId, device);
     this.send(ws, { type: "register-ack", success: true });
 
+    // Notify all paired devices that this device is back online
     for (const [pairedId] of device.pairedWith) {
       const paired = this.devices.get(pairedId);
       if (paired) {
@@ -154,6 +178,13 @@ export class Relay {
           deviceName: device.deviceName,
           sessions: device.sessions,
         });
+        // Also re-add this device to the paired device's pairedWith (bidirectional)
+        if (!paired.pairedWith.has(device.deviceId)) {
+          paired.pairedWith.set(device.deviceId, {
+            deviceName: device.deviceName,
+            publicKey: device.publicKey,
+          });
+        }
       }
     }
 
@@ -268,6 +299,18 @@ export class Relay {
     const device = this.devices.get(deviceId);
     if (!device) return;
 
+    // Save pairings so they survive reconnection (e.g. desktop app restart)
+    if (device.pairedWith.size > 0) {
+      this.savedPairings.set(deviceId, {
+        pairings: new Map(device.pairedWith),
+        savedAt: Date.now(),
+      });
+      console.log(
+        `[relay] Saved ${device.pairedWith.size} pairing(s) for ${device.deviceName} (${deviceId.slice(0, 8)}...)`,
+      );
+    }
+
+    // Notify paired devices that this device went offline
     for (const [pairedId] of device.pairedWith) {
       const paired = this.devices.get(pairedId);
       if (paired) {
@@ -359,6 +402,12 @@ export class Relay {
         this.messageBuffer.delete(deviceId);
       } else {
         this.messageBuffer.set(deviceId, fresh);
+      }
+    }
+    // Also clean up expired saved pairings
+    for (const [deviceId, saved] of this.savedPairings) {
+      if (now - saved.savedAt > this.PAIRING_TTL_MS) {
+        this.savedPairings.delete(deviceId);
       }
     }
   }
