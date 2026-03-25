@@ -158,6 +158,24 @@ function readRelaySettings(): {
 }
 
 /**
+ * Read remote desktop device IDs from settings.
+ * These are devices that should be handled by RelayWsBridge, NOT the inbound bridge.
+ */
+function getRemoteDesktopDeviceIds(): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      for (const rd of parsed.remoteDevices ?? []) {
+        if (rd.deviceId) ids.add(rd.deviceId);
+      }
+    }
+  } catch { /* ignore */ }
+  return ids;
+}
+
+/**
  * Get the local server's WebSocket URL (for the inbound bridge to connect to).
  */
 function resolveLocalServerWsUrl(): string | null {
@@ -399,7 +417,13 @@ export function useRelayConnection(): RelayConnectionState {
 
           // Start the inbound bridge so mobile devices can send RPC requests
           if (localWsUrl && !getGlobalBridge()) {
-            setGlobalBridge(new RelayInboundBridge(transport, localWsUrl));
+            const bridge = new RelayInboundBridge(transport, localWsUrl);
+            // Tell the bridge which devices are remote desktops (NOT mobiles).
+            // This prevents the bridge from registering message handlers for
+            // those devices, which would overwrite the RelayWsBridge handler
+            // and break remote session viewing.
+            bridge.setExcludedDevices(getRemoteDesktopDeviceIds());
+            setGlobalBridge(bridge);
             console.log("[relay] Inbound bridge started for mobile RPC proxying");
           }
 
@@ -477,7 +501,18 @@ export function useRelayConnection(): RelayConnectionState {
         onPairedDevicesChanged: (devices) => {
           setPairedDevices(devices);
           if (getGlobalBridge()) {
+            // Get the set of remote desktop device IDs — these should NOT be
+            // added as mobile devices because their messages are handled by
+            // RelayWsBridge. Adding them here would overwrite the bridge's
+            // message handler and break remote session viewing.
+            const remoteDesktopIds = getRemoteDesktopDeviceIds();
+            // Also refresh the exclusion list on the bridge in case settings changed
+            getGlobalBridge()!.setExcludedDevices(remoteDesktopIds);
             for (const d of devices) {
+              if (remoteDesktopIds.has(d.deviceId)) {
+                console.log(`[relay] Skipping remote desktop device in onPairedDevicesChanged: ${d.deviceId.slice(0, 8)}...`);
+                continue;
+              }
               getGlobalBridge()!.addMobileDevice(d.deviceId);
             }
           }

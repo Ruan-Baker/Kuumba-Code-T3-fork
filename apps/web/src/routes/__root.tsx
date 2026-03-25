@@ -17,6 +17,7 @@ import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
 import { readNativeApi, onApiChange } from "../nativeApi";
 import { clearPromotedDraftThreads, useComposerDraftStore } from "../composerDraftStore";
+import { useConnectionContext, selectIsRemote } from "../connectionContext";
 import { useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { terminalRunningSubprocessFromEvent } from "../terminalActivity";
@@ -150,6 +151,7 @@ function EventRouter() {
   const removeOrphanedTerminalStates = useTerminalStateStore(
     (store) => store.removeOrphanedTerminalStates,
   );
+  const isRemote = useConnectionContext(selectIsRemote);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -319,6 +321,16 @@ function EventRouter() {
       });
     });
     subscribed = true;
+
+    // For remote (relay) connections, onServerWelcome never fires because it's
+    // tied to the LOCAL WsTransport. We need to immediately fetch the remote
+    // snapshot so the store gets hydrated with remote threads. Without this,
+    // the thread route sees no threads in the store and renders nothing.
+    if (useConnectionContext.getState().mode === "remote") {
+      console.log("[EventRouter] Remote mode detected — fetching snapshot immediately");
+      void syncSnapshot();
+    }
+
     return () => {
       disposed = true;
       needsProviderInvalidation = false;
@@ -331,6 +343,7 @@ function EventRouter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     apiVersion,
+    isRemote,
     navigate,
     queryClient,
     removeOrphanedTerminalStates,

@@ -3,6 +3,7 @@ import { createFileRoute, retainSearchParams, useNavigate } from "@tanstack/reac
 import { Suspense, lazy, type ReactNode, useCallback, useEffect, useState } from "react";
 
 import ChatView from "../components/ChatView";
+import { useConnectionContext, selectIsRemote } from "../connectionContext";
 import { DiffWorkerPoolProvider } from "../components/DiffWorkerPoolProvider";
 import {
   DiffPanelHeaderSkeleton,
@@ -162,6 +163,7 @@ const DiffPanelInlineSidebar = (props: {
 
 function ChatThreadRouteView() {
   const threadsHydrated = useStore((store) => store.threadsHydrated);
+  const isRemote = useConnectionContext(selectIsRemote);
   const navigate = useNavigate();
   const threadId = Route.useParams({
     select: (params) => ThreadId.makeUnsafe(params.threadId),
@@ -206,13 +208,22 @@ function ChatThreadRouteView() {
       return;
     }
 
+    // In remote mode, the thread lives on the remote machine — it won't be in
+    // the local store until the remote snapshot arrives. Don't redirect away;
+    // the snapshot will hydrate the store shortly and cause a re-render.
+    if (isRemote) {
+      return;
+    }
+
     if (!routeThreadExists) {
       void navigate({ to: "/", replace: true });
       return;
     }
-  }, [navigate, routeThreadExists, threadsHydrated, threadId]);
+  }, [navigate, routeThreadExists, threadsHydrated, threadId, isRemote]);
 
-  if (!threadsHydrated || !routeThreadExists) {
+  // In remote mode, render immediately — the snapshot will arrive and hydrate
+  // the store. For local mode, wait until threads are hydrated and the thread exists.
+  if (!isRemote && (!threadsHydrated || !routeThreadExists)) {
     return null;
   }
 
