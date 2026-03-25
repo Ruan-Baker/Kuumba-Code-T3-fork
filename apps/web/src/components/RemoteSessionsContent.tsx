@@ -6,7 +6,7 @@ import {
   WifiIcon,
   WifiOffIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import {
@@ -18,6 +18,7 @@ import { useRemoteConnectionStore } from "../remoteConnection";
 import { createRemoteNativeApi } from "../wsNativeApi";
 import { useConnectionContext } from "../connectionContext";
 import { WsTransport } from "../wsTransport";
+import { useRelay } from "../lib/useRelayConnection";
 import { ProjectNotesPopover } from "./ProjectNotesPopover";
 import { Collapsible, CollapsibleContent } from "./ui/collapsible";
 import { Badge } from "./ui/badge";
@@ -197,9 +198,39 @@ function RemoteDeviceGroup({
 export function RemoteSessionsContent() {
   const { settings } = useAppSettings();
   const navigate = useNavigate();
+  const { pairedDevices } = useRelay();
 
   const remoteDevices = settings.remoteDevices ?? [];
-  const { statuses } = useRemoteDevices(remoteDevices);
+  const { statuses, updateDeviceSessions, updateDeviceStatus } = useRemoteDevices(remoteDevices);
+
+  // Wire relay paired device data into the UI status map.
+  // When the relay reports a device as online with sessions, update the status map
+  // so the Remote tab shows green dots and session lists.
+  useEffect(() => {
+    for (const pd of pairedDevices) {
+      const matchingConfig = remoteDevices.find((rd) => rd.deviceId === pd.deviceId);
+      if (!matchingConfig) continue;
+
+      if (pd.online && pd.sessions.length > 0) {
+        updateDeviceSessions(pd.deviceId, {
+          deviceId: pd.deviceId,
+          deviceName: pd.deviceName,
+          sessions: pd.sessions.map((s) => ({
+            threadId: s.threadId,
+            projectId: s.projectId,
+            projectName: s.projectName,
+            projectCwd: s.projectCwd,
+            status: s.status,
+            title: s.title,
+          })),
+        });
+      } else if (pd.online) {
+        updateDeviceStatus(pd.deviceId, { online: true });
+      } else {
+        updateDeviceStatus(pd.deviceId, { online: false, info: null });
+      }
+    }
+  }, [pairedDevices, remoteDevices, updateDeviceSessions, updateDeviceStatus]);
 
   const hasDevices = remoteDevices.length > 0;
 

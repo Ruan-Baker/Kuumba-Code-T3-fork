@@ -1071,7 +1071,7 @@ export default function Sidebar() {
   return (
     <>
       <SidebarHeader
-        className={`gap-0 px-0 py-0 ${isElectron ? "drag-region h-[52px] pl-2 pr-2 flex-row items-center" : "px-2 py-2"}`}
+        className={`gap-0 px-0 py-0 ${isElectron ? `drag-region h-[52px] pr-2 flex-row items-center ${isMacPlatform(navigator.platform) ? "pl-[76px]" : "pl-2"}` : "px-2 py-2"}`}
       >
         <div className="mx-2 my-2 flex w-full rounded-lg bg-secondary/50 p-0.5">
           <button
