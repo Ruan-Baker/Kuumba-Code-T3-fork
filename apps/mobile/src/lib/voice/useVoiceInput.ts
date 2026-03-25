@@ -3,12 +3,13 @@
  *
  * 1. Always capture audio via MediaRecorder (works in all browsers/WebViews)
  * 2. Also try Web Speech API in parallel for instant results
- * 3. If Web Speech API produced text → use it
- *    If not → transcribe recorded audio with local Whisper model
- * 4. Clean up with OpenRouter (optional, if API key stored)
+ * 3. If Web Speech API produced text → clean up with OpenRouter
+ *    If not → send recorded audio to OpenRouter Gemini for transcription + cleanup
+ * 4. No local Whisper model needed — everything goes through OpenRouter
  */
 import { useState, useRef, useCallback } from "react";
 import { cleanupTranscript } from "./cleanup";
+import { transcribeWithOpenRouter } from "./transcribe";
 import { loadStoredKey } from "./crypto";
 import { showToast } from "~/components/Toast";
 
@@ -30,7 +31,6 @@ export function useVoiceInput(projectContext?: string | undefined) {
   const transcriptRef = useRef<string>("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const hasSpeechAPIRef = useRef<boolean>(false);
 
   const getAnalyser = useCallback(() => analyserRef.current, []);
 
@@ -50,7 +50,7 @@ export function useVoiceInput(projectContext?: string | undefined) {
       source.connect(analyser);
       analyserRef.current = analyser;
 
-      // Always start MediaRecorder as the reliable audio capture
+      // Always start MediaRecorder as reliable audio capture (fallback for transcription)
       audioChunksRef.current = [];
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
@@ -67,8 +67,7 @@ export function useVoiceInput(projectContext?: string | undefined) {
       };
       mediaRecorder.start(250); // Collect chunks every 250ms
 
-      // Also try Web Speech API for instant results (best-effort)
-      hasSpeechAPIRef.current = false;
+      // Also try Web Speech API for instant results (best-effort, free)
       transcriptRef.current = "";
       const SpeechRecognition =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -82,7 +81,6 @@ export function useVoiceInput(projectContext?: string | undefined) {
           recognitionRef.current = recognition;
 
           recognition.onresult = (event: any) => {
-            hasSpeechAPIRef.current = true;
             let transcript = "";
             for (let i = 0; i < event.results.length; i++) {
               transcript += event.results[i][0].transcript;
@@ -93,15 +91,14 @@ export function useVoiceInput(projectContext?: string | undefined) {
           recognition.onerror = (event: any) => {
             if (event.error === "no-speech" || event.error === "aborted") return;
             console.warn("[Voice] Speech API error:", event.error);
-            // Don't fail — MediaRecorder is still capturing
           };
 
           recognition.start();
         } catch (e) {
-          console.warn("[Voice] Speech API start failed, will use Whisper fallback:", e);
+          console.warn("[Voice] Speech API start failed:", e);
         }
       } else {
-        console.log("[Voice] Web Speech API not available — will use Whisper for transcription");
+        console.log("[Voice] Web Speech API not available — will use OpenRouter for transcription");
       }
 
       startTimeRef.current = Date.now();
@@ -113,7 +110,7 @@ export function useVoiceInput(projectContext?: string | undefined) {
     } catch (err) {
       const msg =
         err instanceof Error && err.name === "NotAllowedError"
-          ? "Microphone permission denied. Please allow microphone access."
+          ? "Microphone permission denied. Please allow mic access in your browser settings."
           : "Could not access microphone. Check browser permissions.";
       setState({ phase: "error", message: msg });
       showToast("error", msg);
@@ -166,66 +163,59 @@ export function useVoiceInput(projectContext?: string | undefined) {
     const speechAPIText = transcriptRef.current.trim();
     transcriptRef.current = "";
 
-    let rawText = speechAPIText;
+    // Get the recorded audio blob (needed if Speech API didn't work)
+    const audioBlob = await recordedAudioPromise;
 
-    // If Web Speech API didn't produce results, use Whisper on the recorded audio
-    if (!rawText) {
-      const audioBlob = await recordedAudioPromise;
-      if (!audioBlob || audioBlob.size < 1000) {
-        // Too short or no audio
-        setState({ phase: "idle" });
-        if (audioBlob && audioBlob.size < 1000) {
-          showToast("info", "Recording too short — try speaking longer");
-        }
-        return "";
-      }
+    // Load the OpenRouter API key
+    const apiKey = await loadStoredKey();
 
-      setState({ phase: "transcribing" });
+    // --- Path A: Web Speech API produced text → just clean it up ---
+    if (speechAPIText) {
+      setState({ phase: "cleaning" });
+      let cleanedText = speechAPIText;
       try {
-        const { loadWhisperModel, transcribeAudio, isWhisperCached } = await import("./whisper");
-
-        if (!isWhisperCached()) {
-          showToast("info", "Downloading speech model (first time only)...");
+        if (apiKey) {
+          cleanedText = await cleanupTranscript(speechAPIText, apiKey, projectContext);
         }
-
-        await loadWhisperModel((progress) => {
-          if (progress.progress !== undefined) {
-            console.log(`[Voice] Whisper loading: ${Math.round(progress.progress)}%`);
-          }
-        });
-
-        rawText = await transcribeAudio(audioBlob);
-      } catch (err) {
-        console.error("[Voice] Whisper transcription failed:", err);
-        showToast("error", "Transcription failed. Try again.");
-        setState({ phase: "idle" });
-        return "";
+      } catch {
+        // Use raw text if cleanup fails
       }
-    } else {
-      // We had speech API results — don't need the recorded audio
-      await recordedAudioPromise; // just drain it
+      setState({ phase: "idle" });
+      return cleanedText;
     }
 
-    if (!rawText.trim()) {
+    // --- Path B: No Speech API text → use OpenRouter to transcribe the audio ---
+    if (!audioBlob || audioBlob.size < 1000) {
       setState({ phase: "idle" });
-      showToast("info", "No speech detected — try again");
+      if (audioBlob && audioBlob.size < 1000) {
+        showToast("info", "Recording too short — try speaking longer");
+      }
       return "";
     }
 
-    // Cleanup with OpenRouter (optional)
-    setState({ phase: "cleaning" });
-    let cleanedText = rawText;
-    try {
-      const apiKey = await loadStoredKey();
-      if (apiKey) {
-        cleanedText = await cleanupTranscript(rawText, apiKey, projectContext);
-      }
-    } catch {
-      // Use raw text if cleanup fails
+    if (!apiKey) {
+      setState({ phase: "idle" });
+      showToast("error", "Add your OpenRouter API key in Settings to enable voice transcription");
+      return "";
     }
 
-    setState({ phase: "idle" });
-    return cleanedText;
+    setState({ phase: "transcribing" });
+    try {
+      // Send audio to OpenRouter Gemini for transcription + cleanup in one shot
+      const text = await transcribeWithOpenRouter(audioBlob, apiKey, projectContext);
+      if (!text.trim()) {
+        showToast("info", "No speech detected — try again");
+        setState({ phase: "idle" });
+        return "";
+      }
+      setState({ phase: "idle" });
+      return text;
+    } catch (err) {
+      console.error("[Voice] OpenRouter transcription failed:", err);
+      showToast("error", "Transcription failed. Check your OpenRouter API key.");
+      setState({ phase: "idle" });
+      return "";
+    }
   }, [projectContext]);
 
   const cancel = useCallback(() => {
