@@ -22,6 +22,13 @@ export class RelayInboundBridge {
   private activeMobileDevices = new Set<string>();
   private handlerCleanups = new Map<string, () => void>();
 
+  /**
+   * Device IDs that should NEVER be treated as mobile devices.
+   * These are remote desktop devices whose messages are handled
+   * by RelayWsBridge, not the inbound bridge.
+   */
+  private excludedDeviceIds = new Set<string>();
+
   /** Current composer state — updated by desktop, read by mobile */
   private composerState: {
     interactionMode: string;
@@ -103,8 +110,39 @@ export class RelayInboundBridge {
     this.connectLocalWs();
   }
 
+  /**
+   * Set the list of device IDs that should be excluded from the inbound bridge.
+   * Any device in this set will be removed from activeMobileDevices if already
+   * registered, and will be blocked from being added in the future.
+   */
+  setExcludedDevices(deviceIds: Set<string>): void {
+    this.excludedDeviceIds = deviceIds;
+    // Remove any already-registered devices that are now excluded
+    for (const id of deviceIds) {
+      if (this.activeMobileDevices.has(id)) {
+        console.log(`[inbound-bridge] Removing now-excluded device: ${id.slice(0, 8)}...`);
+        this.removeMobileDevice(id);
+      }
+    }
+  }
+
+  /**
+   * Check if a device is in the exclusion list (i.e. it's a remote desktop,
+   * not a mobile device).
+   */
+  isExcludedDevice(deviceId: string): boolean {
+    return this.excludedDeviceIds.has(deviceId);
+  }
+
   addMobileDevice(deviceId: string): void {
     if (this.activeMobileDevices.has(deviceId)) return;
+    // Don't register remote desktop devices as mobile — their messages
+    // are handled by RelayWsBridge, and registering a handler here would
+    // overwrite the RelayWsBridge's handler.
+    if (this.excludedDeviceIds.has(deviceId)) {
+      console.log(`[inbound-bridge] Skipping excluded device (remote desktop): ${deviceId.slice(0, 8)}...`);
+      return;
+    }
     this.activeMobileDevices.add(deviceId);
 
     const cleanup = this.relay.registerMessageHandler(deviceId, (plaintext: string) => {
@@ -118,6 +156,11 @@ export class RelayInboundBridge {
 
   handleGlobalMessage(fromDeviceId: string, plaintext: string): void {
     if (this.activeMobileDevices.has(fromDeviceId)) return;
+    // Don't auto-register excluded devices (remote desktops)
+    if (this.excludedDeviceIds.has(fromDeviceId)) {
+      console.log(`[inbound-bridge] Ignoring global message from excluded device: ${fromDeviceId.slice(0, 8)}...`);
+      return;
+    }
     console.log(
       `[inbound-bridge] Auto-registering device ${fromDeviceId.slice(0, 8)}... from global onMessage`,
     );
@@ -141,9 +184,9 @@ export class RelayInboundBridge {
     for (const deviceId of this.activeMobileDevices) {
       void this.relay.sendToDevice(deviceId, push).catch(() => {});
     }
-    // Fallback: also try all paired devices
+    // Fallback: also try all paired devices (skip excluded remote desktops)
     for (const device of this.relay.getPairedDevices()) {
-      if (!this.activeMobileDevices.has(device.deviceId)) {
+      if (!this.activeMobileDevices.has(device.deviceId) && !this.excludedDeviceIds.has(device.deviceId)) {
         void this.relay.sendToDevice(device.deviceId, push).catch(() => {});
       }
     }
@@ -167,8 +210,9 @@ export class RelayInboundBridge {
     for (const deviceId of this.activeMobileDevices) {
       void this.relay.sendToDevice(deviceId, push).catch(() => {});
     }
+    // Fallback: try all paired devices (skip excluded remote desktops)
     for (const device of this.relay.getPairedDevices()) {
-      if (!this.activeMobileDevices.has(device.deviceId)) {
+      if (!this.activeMobileDevices.has(device.deviceId) && !this.excludedDeviceIds.has(device.deviceId)) {
         void this.relay.sendToDevice(device.deviceId, push).catch(() => {});
       }
     }
@@ -408,8 +452,9 @@ export class RelayInboundBridge {
       void this.relay.sendToDevice(deviceId, raw).catch(() => {});
     }
     // Fallback: also try all paired devices (catches devices that haven't sent an RPC yet)
+    // but skip excluded devices (remote desktops) — they handle their own push events
     for (const device of this.relay.getPairedDevices()) {
-      if (!this.activeMobileDevices.has(device.deviceId)) {
+      if (!this.activeMobileDevices.has(device.deviceId) && !this.excludedDeviceIds.has(device.deviceId)) {
         void this.relay.sendToDevice(device.deviceId, raw).catch(() => {});
       }
     }

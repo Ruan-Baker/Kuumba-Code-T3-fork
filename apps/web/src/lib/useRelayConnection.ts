@@ -167,6 +167,26 @@ function getActiveViewedDeviceId(): string | null {
 }
 
 /**
+ * Read ALL remote desktop device IDs from settings.
+ * These devices should NEVER be treated as mobile devices by the inbound bridge,
+ * because their messages are handled by RelayWsBridge when viewing remote sessions.
+ * Unlike getActiveViewedDeviceId(), this works BEFORE any session is clicked.
+ */
+function getRemoteDesktopDeviceIds(): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      for (const rd of parsed.remoteDevices ?? []) {
+        if (rd.deviceId) ids.add(rd.deviceId);
+      }
+    }
+  } catch { /* ignore */ }
+  return ids;
+}
+
+/**
  * Get the local server's WebSocket URL (for the inbound bridge to connect to).
  */
 function resolveLocalServerWsUrl(): string | null {
@@ -408,7 +428,14 @@ export function useRelayConnection(): RelayConnectionState {
 
           // Start the inbound bridge so mobile devices can send RPC requests
           if (localWsUrl && !getGlobalBridge()) {
-            setGlobalBridge(new RelayInboundBridge(transport, localWsUrl));
+            const bridge = new RelayInboundBridge(transport, localWsUrl);
+            // Exclude remote desktop devices from the inbound bridge so their
+            // messages go through RelayWsBridge instead. This MUST happen at
+            // creation time, BEFORE any pair-accepted events arrive.
+            const remoteIds = getRemoteDesktopDeviceIds();
+            bridge.setExcludedDevices(remoteIds);
+            console.log("[relay] Excluding remote desktop device IDs from inbound bridge:", [...remoteIds]);
+            setGlobalBridge(bridge);
             console.log("[relay] Inbound bridge started for mobile RPC proxying");
           }
 
@@ -486,13 +513,16 @@ export function useRelayConnection(): RelayConnectionState {
         onPairedDevicesChanged: (devices) => {
           setPairedDevices(devices);
           if (getGlobalBridge()) {
-            // Don't add the device we're currently viewing remotely —
-            // its messages are handled by RelayWsBridge. Adding it here
-            // would overwrite the bridge's handler and break remote sessions.
+            // Refresh the exclusion list from settings — this catches remote
+            // desktops BEFORE any session is clicked (unlike getActiveViewedDeviceId
+            // which only works after clicking).
+            const remoteDesktopIds = getRemoteDesktopDeviceIds();
+            getGlobalBridge()!.setExcludedDevices(remoteDesktopIds);
+            // Also check the currently viewed device (belt and suspenders)
             const viewedDeviceId = getActiveViewedDeviceId();
             for (const d of devices) {
-              if (viewedDeviceId && d.deviceId === viewedDeviceId) {
-                console.log(`[relay] Skipping viewed remote device in onPairedDevicesChanged: ${d.deviceId.slice(0, 8)}...`);
+              if (remoteDesktopIds.has(d.deviceId) || (viewedDeviceId && d.deviceId === viewedDeviceId)) {
+                console.log(`[relay] Skipping remote device in onPairedDevicesChanged: ${d.deviceId.slice(0, 8)}...`);
                 continue;
               }
               getGlobalBridge()!.addMobileDevice(d.deviceId);
@@ -501,14 +531,14 @@ export function useRelayConnection(): RelayConnectionState {
         },
         onMessage: (fromDeviceId, _fromDeviceName, message) => {
           if (getGlobalBridge()) {
-            // Don't let the inbound bridge handle messages from the device
-            // we're currently viewing remotely — those are responses routed
-            // through RelayWsBridge's device-specific handler already.
-            // Letting handleGlobalMessage process them would either:
-            // a) overwrite the bridge's handler (if addMobileDevice is called)
-            // b) try to process relay responses as RPC requests
+            // Don't let the inbound bridge handle messages from remote desktop
+            // devices — those are handled by RelayWsBridge. The inbound bridge's
+            // handleGlobalMessage would auto-register them as mobile devices,
+            // overwriting the RelayWsBridge handler.
             const viewedDeviceId = getActiveViewedDeviceId();
             if (viewedDeviceId && fromDeviceId === viewedDeviceId) return;
+            // Also check if this device is a configured remote desktop
+            if (getGlobalBridge()!.isExcludedDevice(fromDeviceId)) return;
             getGlobalBridge()!.handleGlobalMessage(fromDeviceId, message);
           } else {
             console.log(`[relay] Message from ${fromDeviceId} (no bridge):`, message.slice(0, 100));

@@ -105,6 +105,7 @@ export class RelayTransport {
     const peer = this.pairedDevices.get(targetDeviceId);
     if (!peer) throw new Error(`Device ${targetDeviceId} is not paired`);
 
+    console.log(`[RelayTransport] sendToDevice ${targetDeviceId.slice(0, 8)}...: ${message.slice(0, 120)}`);
     const encrypted = await encrypt(peer.sharedKey, message);
     const msg: ClientToRelayMessage = {
       type: "forward",
@@ -249,10 +250,14 @@ export class RelayTransport {
         }
         try {
           const plaintext = await decrypt(peer.sharedKey, msg.encrypted);
+          console.log(`[RelayTransport] Decrypted message from ${msg.fromDeviceId.slice(0, 8)}...: ${plaintext.slice(0, 120)}`);
           // Dispatch to the per-device handler registered by a RelayWsBridge, if any.
           const deviceHandler = this.deviceMessageHandlers.get(msg.fromDeviceId);
           if (deviceHandler) {
+            console.log(`[RelayTransport] Dispatching to device handler for ${msg.fromDeviceId.slice(0, 8)}...`);
             deviceHandler(plaintext);
+          } else {
+            console.log(`[RelayTransport] No device handler for ${msg.fromDeviceId.slice(0, 8)}...`);
           }
           // Also call the global onMessage callback for any other consumers.
           this.config.onMessage?.(msg.fromDeviceId, msg.fromDeviceName, plaintext);
