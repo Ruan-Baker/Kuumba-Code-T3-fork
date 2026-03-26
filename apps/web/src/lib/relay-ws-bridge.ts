@@ -92,6 +92,7 @@ export class RelayWsBridge {
    */
   handleRelayMessage(raw: string): void {
     if (this.disposed) return;
+    console.log(`[RelayWsBridge] handleRelayMessage: ${raw.slice(0, 200)}${raw.length > 200 ? "..." : ""}`);
     this._handleMessage(raw);
   }
 
@@ -107,20 +108,30 @@ export class RelayWsBridge {
     const body = params != null ? { ...params, _tag: method } : { _tag: method };
     const envelope = JSON.stringify({ id, body });
 
+    console.log(`[RelayWsBridge] request id=${id} method=${method} → ${this.targetDeviceId.slice(0, 8)}...`);
+
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
+        console.error(`[RelayWsBridge] Request TIMED OUT: id=${id} method=${method}`);
         reject(new Error(`Request timed out: ${method}`));
       }, REQUEST_TIMEOUT_MS);
 
       this.pending.set(id, {
-        resolve: resolve as (result: unknown) => void,
-        reject,
+        resolve: ((result: unknown) => {
+          console.log(`[RelayWsBridge] Response received: id=${id} method=${method}`);
+          resolve(result as T);
+        }) as (result: unknown) => void,
+        reject: (err: Error) => {
+          console.error(`[RelayWsBridge] Request FAILED: id=${id} method=${method}`, err.message);
+          reject(err);
+        },
         timeout,
       });
 
       // Fire-and-forget; errors surface through the pending reject above.
       this.relay.sendToDevice(this.targetDeviceId, envelope).catch((err: unknown) => {
+        console.error(`[RelayWsBridge] sendToDevice FAILED: id=${id}`, err);
         const pending = this.pending.get(id);
         if (pending) {
           clearTimeout(pending.timeout);
@@ -169,6 +180,8 @@ export class RelayWsBridge {
 
   // --- WsTransport-compatible stubs for connectionContext ---
   // These allow RelayWsBridge to be passed as a WsTransport to setRemote().
+  // Without these, connectionContext methods like syncCursors() would crash
+  // with "not a function" errors.
 
   getPresenceState(): "healthy" | "reconnecting" | "connecting" {
     return "healthy";
@@ -181,6 +194,18 @@ export class RelayWsBridge {
 
   onStateChange(_cb: (state: "open" | "closed" | "reconnecting") => void): () => void {
     return () => {};
+  }
+
+  getLastPushSequence(): number {
+    return 0;
+  }
+
+  getLastChannelSequence(_channel: string): number {
+    return 0;
+  }
+
+  getState(): "open" | "closed" | "reconnecting" {
+    return "open";
   }
 
   dispose(): void {

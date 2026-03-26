@@ -221,8 +221,21 @@ function ChatThreadRouteView() {
     }
   }, [navigate, routeThreadExists, threadsHydrated, threadId, isRemote]);
 
-  // In remote mode, render immediately — the snapshot will arrive and hydrate
-  // the store. For local mode, wait until threads are hydrated and the thread exists.
+  // In remote mode, show a loading state while we wait for the remote snapshot
+  // to arrive and populate the store with thread data. Without this, ChatView
+  // renders with no thread and shows "Select a thread..." which is confusing.
+  if (isRemote && !routeThreadExists) {
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <div className="mb-2 text-lg">Loading remote session…</div>
+          <div className="text-sm">Fetching thread data from the remote device</div>
+        </div>
+      </div>
+    );
+  }
+
+  // For local mode, wait until threads are hydrated and the thread exists.
   if (!isRemote && (!threadsHydrated || !routeThreadExists)) {
     return null;
   }

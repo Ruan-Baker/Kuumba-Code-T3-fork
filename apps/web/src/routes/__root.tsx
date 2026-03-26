@@ -202,8 +202,10 @@ function EventRouter() {
       pending = false;
       try {
         await flushSnapshotSync();
-      } catch {
+      } catch (err) {
         // Keep prior state and wait for next domain event to trigger a resync.
+        // Log the error so remote session failures are visible in console.
+        console.error("[EventRouter] syncSnapshot failed:", err);
       }
       syncing = false;
     };
