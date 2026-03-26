@@ -429,12 +429,12 @@ export function useRelayConnection(): RelayConnectionState {
           // Start the inbound bridge so mobile devices can send RPC requests
           if (localWsUrl && !getGlobalBridge()) {
             const bridge = new RelayInboundBridge(transport, localWsUrl);
-            // Exclude remote desktop devices from the inbound bridge so their
-            // messages go through RelayWsBridge instead. This MUST happen at
-            // creation time, BEFORE any pair-accepted events arrive.
-            const remoteIds = getRemoteDesktopDeviceIds();
-            bridge.setExcludedDevices(remoteIds);
-            console.log("[relay] Excluding remote desktop device IDs from inbound bridge:", [...remoteIds]);
+            // NOTE: We intentionally do NOT call setExcludedDevices() here.
+            // Both machines have each other in remoteDevices, and the exclusion
+            // is symmetric. If we exclude remote desktops, Big Boy would also
+            // exclude the Mac, preventing it from processing Mac's RPC requests.
+            // Instead, we rely on getActiveViewedDeviceId() which only applies
+            // when THIS machine is actively viewing a remote session.
             setGlobalBridge(bridge);
             console.log("[relay] Inbound bridge started for mobile RPC proxying");
           }
@@ -513,16 +513,14 @@ export function useRelayConnection(): RelayConnectionState {
         onPairedDevicesChanged: (devices) => {
           setPairedDevices(devices);
           if (getGlobalBridge()) {
-            // Refresh the exclusion list from settings — this catches remote
-            // desktops BEFORE any session is clicked (unlike getActiveViewedDeviceId
-            // which only works after clicking).
-            const remoteDesktopIds = getRemoteDesktopDeviceIds();
-            getGlobalBridge()!.setExcludedDevices(remoteDesktopIds);
-            // Also check the currently viewed device (belt and suspenders)
+            // Only skip the device we're CURRENTLY viewing remotely.
+            // We must NOT use getRemoteDesktopDeviceIds() here because the
+            // exclusion is symmetric — Big Boy also has us in its remoteDevices,
+            // and would skip our RPC requests if we told it to exclude us.
             const viewedDeviceId = getActiveViewedDeviceId();
             for (const d of devices) {
-              if (remoteDesktopIds.has(d.deviceId) || (viewedDeviceId && d.deviceId === viewedDeviceId)) {
-                console.log(`[relay] Skipping remote device in onPairedDevicesChanged: ${d.deviceId.slice(0, 8)}...`);
+              if (viewedDeviceId && d.deviceId === viewedDeviceId) {
+                console.log(`[relay] Skipping actively-viewed device in onPairedDevicesChanged: ${d.deviceId.slice(0, 8)}...`);
                 continue;
               }
               getGlobalBridge()!.addMobileDevice(d.deviceId);
@@ -531,14 +529,11 @@ export function useRelayConnection(): RelayConnectionState {
         },
         onMessage: (fromDeviceId, _fromDeviceName, message) => {
           if (getGlobalBridge()) {
-            // Don't let the inbound bridge handle messages from remote desktop
-            // devices — those are handled by RelayWsBridge. The inbound bridge's
-            // handleGlobalMessage would auto-register them as mobile devices,
-            // overwriting the RelayWsBridge handler.
+            // Don't let the inbound bridge handle messages from the device
+            // we're CURRENTLY viewing remotely — those responses are routed
+            // through RelayWsBridge's device-specific handler already.
             const viewedDeviceId = getActiveViewedDeviceId();
             if (viewedDeviceId && fromDeviceId === viewedDeviceId) return;
-            // Also check if this device is a configured remote desktop
-            if (getGlobalBridge()!.isExcludedDevice(fromDeviceId)) return;
             getGlobalBridge()!.handleGlobalMessage(fromDeviceId, message);
           } else {
             console.log(`[relay] Message from ${fromDeviceId} (no bridge):`, message.slice(0, 100));
